@@ -3,20 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATERPA - Sistema de Usina de Concreto</title>
+    <title>ATERPA Usina Cloud v2.0</title>
     
-    <!-- Bibliotecas Externas -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <!-- Sidebar -->
     <aside class="sidebar no-print">
-        <div class="logo-area">ATERPA <span>Usina</span></div>
+        <div class="logo-area">ATERPA <span>Usina v2.0</span></div>
         <ul class="menu" id="menuLateral">
             <li><a href="#" onclick="window.mudarAba('emissao', this)" class="active">Nova Nota (Emissão)</a></li>
             <li><a href="#" onclick="window.mudarAba('historico', this)">Histórico de Notas</a></li>
@@ -31,27 +28,22 @@
         </ul>
     </aside>
 
-    <!-- ÁREAS DE CONTEÚDO -->
     <main id="aba-emissao" class="main-content">
         <div style="padding: 10px 20px; background: #f4f7fb; flex-direction: column; width: 100%;">
-            <!-- Painel Silos -->
             <div style="display: flex; gap: 15px; margin-bottom: 8px;">
-                <div class="card-silo"><div><div class="silo-label">SILO 1 (CIMENTO)</div><div class="silo-val" id="visorSilo1">0,0 KG</div></div></div>
-                <div class="card-silo"><div><div class="silo-label">SILO 2 (CIMENTO)</div><div class="silo-val" id="visorSilo2">0,0 KG</div></div></div>
+                <div class="card-silo"><div><div class="silo-label">SILO 1</div><div class="silo-val" id="visorSilo1">0,0 KG</div></div></div>
+                <div class="card-silo"><div><div class="silo-label">SILO 2</div><div class="silo-val" id="visorSilo2">0,0 KG</div></div></div>
             </div>
-
-            <!-- Tabela Materiais -->
             <table class="materials-table"><thead id="header-barra-materiais"></thead><tbody id="body-barra-materiais"></tbody></table>
-
             <div class="excel-layout">
                 <div class="excel-form-col">
-                    <div class="form-row"><div class="form-label">Nº NOTA FISCAL</div><input type="number" id="inputNF" class="form-input"></div>
+                    <div class="form-row"><div class="form-label">NF</div><input type="number" id="inputNF" class="form-input"></div>
                     <div class="form-row"><div class="form-label">DATA</div><input type="text" id="inputDate" class="form-input"></div>
-                    <div class="form-row"><div class="form-label">HORA SAIDA</div><input type="text" id="inputHoraSaida" class="form-input"></div>
+                    <div class="form-row"><div class="form-label">HORA</div><input type="text" id="inputHoraSaida" class="form-input"></div>
                     <div class="form-row"><div class="form-label">BETONEIRA</div><input type="text" id="inputPlacaDisplay" class="form-input" readonly><input type="text" id="inputFrota" class="form-input"></div>
                     <div class="form-row"><div class="form-label">MOTORISTA</div><input type="text" id="inputMotMatriculaDisplay" class="form-input" style="width:60px;"><input type="text" id="inputMotoristaDisplay" class="form-input" readonly></div>
                     <div class="form-row"><div class="form-label">TRAÇO</div><input type="text" id="inputTracoDisplay" class="form-input" readonly></div>
-                    <div class="form-row"><div class="form-label">QTD M³</div><input type="number" id="inputVolume" class="form-input" step="0.5"></div>
+                    <div class="form-row"><div class="form-label">VOLUME</div><input type="number" id="inputVolume" class="form-input" step="0.5"></div>
                     <button class="btn-imprimir" onclick="window.imprimirNota()">GRAVAR E IMPRIMIR NOTA</button>
                 </div>
                 <div class="excel-lists-col">
@@ -65,20 +57,16 @@
 
     <main id="aba-historico" class="main-content" style="display:none; padding: 20px;">
         <div style="width: 100%;">
-            <h2 style="margin-bottom: 20px;">📜 Histórico de Notas Emitidas</h2>
+            <h2>📜 Histórico de Notas (v2.0)</h2>
             <table class="materials-table" style="width: 100%;" id="tabelaHistorico">
-                <thead><tr><th>NF</th><th>Data</th><th>Hora</th><th>Traço</th><th>Volume</th><th>Placa</th><th>Motorista</th></tr></thead>
-                <tbody><tr><td colspan="7" style="text-align:center;">Carregando histórico...</td></tr></tbody>
+                <thead><tr><th>NF</th><th>Data</th><th>Hora</th><th>Traço</th><th>Vol</th><th>Placa</th><th>Motorista</th></tr></thead>
+                <tbody><tr><td colspan="7" style="text-align:center;">Buscando notas na nuvem...</td></tr></tbody>
             </table>
         </div>
     </main>
 
     <main id="aba-tracos" class="main-content" style="display:none; padding: 20px;">
-        <div style="width: 100%;"><h2>🧪 Gestão de Traços</h2><p>Área de edição de traços (Em desenvolvimento cloud)</p></div>
-    </main>
-
-    <main id="aba-frota" class="main-content" style="display:none; padding: 20px;">
-        <div style="width: 100%;"><h2>🚚 Gestão de Frota</h2><p>Área de cadastro de veículos (Em desenvolvimento cloud)</p></div>
+        <div style="width: 100%;"><h2>🧪 Cadastro de Traços</h2><p>Página em manutenção para Cloud.</p></div>
     </main>
 
     <div id="print-section"></div>
