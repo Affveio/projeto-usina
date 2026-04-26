@@ -1,9 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-
-    <script>
-    // database_v2.js - VERSÃO ESPELHAMENTO TOTAL (MIRROR)
+<script>// database_v2.js - VERSÃO MULTI-USINA
 const SUPABASE_URL = 'https://ttcycjnlzchagnneqpym.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0Y3ljam5semNoYWdubmVxcHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNjQzMTksImV4cCI6MjA5Mjc0MDMxOX0.h-K5p9r1Szx_v8EVZO4Z8nMJkPetOt0h82HHG5FV970'; 
 
@@ -22,13 +20,12 @@ const gerarIDNota = (n) => {
     const cleanNF = (n.nf || n.numero || n['Nº NOTA FISCAL'] || '0').toString().replace(/\D/g, '');
     const cleanData = (n.data || '0').toString().replace(/\D/g, '');
     const cleanHora = (n.hora_mistura || n.hora_saida || '0').toString().replace(/\D/g, '');
-    return `00000000-0000-0000-0000-${cleanNF.padStart(6,'0')}${cleanData.padStart(6,'0')}${cleanHora.padStart(4,'0')}`.substring(0, 36);
+    const unidade = localStorage.getItem('usina_unidade') || 'G';
+    return `00000000-0000-0000-0000-${unidade.substring(0,3)}${cleanNF.padStart(6,'0')}${cleanData.padStart(6,'0')}`.substring(0, 36);
 };
 
-// BAIXAR TUDO (NOTAS, TRAÇOS, FROTA)
 window.dbBaixarHistoricoDaNuvem = async () => {
     try {
-        // 1. Baixar Notas
         const resNotas = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=100`, {
             headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         });
@@ -40,85 +37,62 @@ window.dbBaixarHistoricoDaNuvem = async () => {
             notasNuvem.forEach(n => { if (!mapa[n.id]) mapa[n.id] = n; });
             localStorage.setItem('usina_historico', JSON.stringify(Object.values(mapa)));
         }
-
-        // 2. Baixar Configurações (Traços e Frota)
-        const resConfig = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.config_global&select=dados`, {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        if (resConfig.ok) {
-            const data = await resConfig.json();
-            if (data && data[0] && data[0].dados) {
-                const configs = data[0].dados;
-                if (configs.frota) localStorage.setItem('usina_frota', JSON.stringify(configs.frota));
-                if (configs.tracos) localStorage.setItem('usina_tracos', JSON.stringify(configs.tracos));
-                if (configs.materiais) localStorage.setItem('usina_materiais', JSON.stringify(configs.materiais));
-            }
-        }
         return { success: true };
     } catch (e) { return { success: false }; }
 };
 
-// ENVIAR TUDO (NOTAS, TRAÇOS, FROTA)
 window.dbSincronizarTudoLocalParaNuvem = async () => {
     let notasRaw = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-    let frota = JSON.parse(localStorage.getItem('usina_frota') || '[]');
-    let tracos = JSON.parse(localStorage.getItem('usina_tracos') || '[]');
-    let materiais = JSON.parse(localStorage.getItem('usina_materiais') || '[]');
+    const unidadeAtual = localStorage.getItem('usina_unidade') || 'NÃO DEFINIDA';
 
     const todasColunas = [
         "id", "nf", "data", "hora_mistura", "hora_saida", "turno", "al", "placa", 
         "matricula", "motorista", "frente", "local", "traco", "volume", "qtd", 
         "agua_obra", "agua_usina", "agua_retida", "agua_colocada", "agua_colocar_obr",
-        "gelo", "silo", "betoneira", "materiais", "timestamp", "vias", "vias_copias"
+        "gelo", "silo", "betoneira", "materiais", "timestamp", "vias", "vias_copias", "unidade"
     ];
 
     const notasPadronizadas = notasRaw.map(n => {
         const novaNota = {};
         todasColunas.forEach(col => novaNota[col] = null);
         Object.keys(n).forEach(key => { if (todasColunas.includes(key)) novaNota[key] = n[key]; });
+        
+        // Mapeamento de nomes e unidade
+        novaNota.unidade = unidadeAtual;
         if (n.frente && !novaNota.local) novaNota.local = n.frente;
         if (n.local && !novaNota.frente) novaNota.frente = n.local;
         if (n.volume && !novaNota.qtd) novaNota.qtd = n.volume;
         if (n.qtd && !novaNota.volume) novaNota.volume = n.qtd;
-        if (n.numero && !novaNota.nf) novaNota.nf = n.numero;
+        
         if (!novaNota.id || novaNota.id.length < 20) novaNota.id = gerarIDNota(n);
         return novaNota;
     });
 
     try {
-        // Enviar Notas
         await fetch(`${SUPABASE_URL}/rest/v1/notas`, {
             method: 'POST',
             headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
             body: JSON.stringify(notasPadronizadas)
         });
-        
-        // Enviar Configurações (Espelhamento de Traços e Frota)
-        const configData = { 
-            id: 'config_global', 
-            dados: { frota, tracos, materiais }, 
-            ultima_sinc: new Date().toISOString() 
-        };
-        await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-            body: JSON.stringify(configData)
-        });
-
-        return { success: true, message: "Espelhamento completo realizado!" };
+        return { success: true, message: `Sucesso! Sincronizado como Unidade: ${unidadeAtual}` };
     } catch (e) { return { success: false, error: e.message }; }
 };
-
-    </script>
-    <script>
-    // cloud_v2.js - VERSÃO COM MENSAGEM DETALHADA
+</script>
+<script>// cloud_v2.js - VERSÃO MULTI-USINAS + BACKUP
 window.abrirConfigCloud = () => {
     const modal = document.getElementById('cloud-modal');
     if (modal) modal.style.display = 'flex';
+    
+    // Carregar nome da unidade salvo
+    const unidadeSalva = localStorage.getItem('usina_unidade') || '';
+    const inputUnidade = document.getElementById('cloud-unidade-input');
+    if (inputUnidade) inputUnidade.value = unidadeSalva;
+
     const debug = window.getCloudDebugInfo ? window.getCloudDebugInfo() : { url: '---', lib: '---' };
     const setElem = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
     setElem('cloud-debug-url', debug.url);
     setElem('cloud-debug-lib', debug.lib);
+    
     const badge = document.getElementById('cloud-badge');
     const statusText = document.getElementById('cloud-status-text');
     if (badge && badge.innerText.includes('Online')) {
@@ -126,9 +100,31 @@ window.abrirConfigCloud = () => {
     }
 };
 
+window.salvarUnidade = () => {
+    const nome = document.getElementById('cloud-unidade-input').value;
+    localStorage.setItem('usina_unidade', nome);
+    alert("✅ Unidade '" + nome + "' configurada com sucesso!");
+};
+
 window.fecharConfigCloud = () => {
     const modal = document.getElementById('cloud-modal');
     if (modal) modal.style.display = 'none';
+};
+
+window.gerarBackupExcelLocal = () => {
+    const notas = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+    if (notas.length === 0) { alert("Histórico vazio."); return; }
+    const colunas = Object.keys(notas[0]);
+    let csvContent = "\uFEFF" + colunas.join(";") + "\n";
+    notas.forEach(n => {
+        const linha = colunas.map(col => `"${(n[col] || "").toString().replace(/"/g, '""')}"`);
+        csvContent += linha.join(";") + "\n";
+    });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.setAttribute("href", URL.createObjectURL(blob));
+    link.setAttribute("download", `BACKUP_USINA_${localStorage.getItem('usina_unidade') || 'GERAL'}_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.csv`);
+    link.click();
 };
 
 window.realizarSincronizacao = async () => {
@@ -151,8 +147,6 @@ window.inicializarNuvem = async () => {
         badge.style.background = "#dcfce7";
         badge.style.color = "#166534";
         await window.dbBaixarHistoricoDaNuvem();
-    } else {
-        badge.innerText = "● Nuvem Offline";
     }
 };
 
@@ -163,9 +157,7 @@ document.addEventListener('click', (e) => {
 });
 
 setTimeout(window.inicializarNuvem, 1000);
-
-    </script>
-    
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aterpa - Sistema de Usina</title>
@@ -375,7 +367,7 @@ setTimeout(window.inicializarNuvem, 1000);
             <li><a href="#" onclick="mudarAba('resumo', this)">📅 Resumo Diário</a></li>
             <li><a href="#" onclick="mudarAba('segunda-via', this)">🖨️ Segunda Via</a></li>
             <li style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-                <a href="javascript:void(0)" onclick="window.abrirConfigCloud()" style="color: #14b8a6; text-decoration: none; font-size: 13px;">☁️ Configurar Nuvem</a>
+                <a href="javascript:void(0)" onclick="window.abrirConfigCloud()" style="color: #14b8a6; text-decoration: none; font-size: 13px;">☁️ Painel Multi-Usina</a>
             </li>
             <li style="padding: 10px 0;">
                 <div id="cloud-badge" style="padding: 4px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; width: fit-content; background: #334155; color: #94a3b8;">● Conectando...</div>
@@ -3265,14 +3257,26 @@ setTimeout(window.inicializarNuvem, 1000);
     <div id="cloud-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000000; justify-content:center; align-items:center; font-family: sans-serif;">
         <div style="background:white; padding:30px; border-radius:15px; width:450px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.5); text-align:center; color: #1e293b;">
             <h2 style="margin-top:0;">Painel da Nuvem</h2>
-            <div id="cloud-status-text" style="font-size:20px; font-weight:bold; margin:20px 0;">● Conectando...</div>
             
-            <div style="background:#f1f5f9; padding:15px; border-radius:10px; text-align:left; font-size:12px; margin-bottom:20px;">
-                <strong>Diagnóstico:</strong> URL: <span id="cloud-debug-url">---</span> | Lib: <span id="cloud-debug-lib">---</span>
+            <div style="margin-bottom: 20px; text-align: left; background: #f8fafc; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                <label style="display: block; font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 5px;">IDENTIFICAÇÃO DA USINA:</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="cloud-unidade-input" placeholder="Ex: A369 ou A375" style="flex: 1; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    <button onclick="window.salvarUnidade()" style="background: #334155; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">Salvar</button>
+                </div>
             </div>
 
-            <button onclick="window.realizarSincronizacao()" class="btn-sync" style="background:#14b8a6; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:10px;">Sincronizar Manualmente</button>
-            <button onclick="window.fecharConfigCloud()" style="background:white; border:1px solid #cbd5e1; color:#64748b; padding:10px; border-radius:8px; cursor:pointer; width:100%;">Fechar</button>
+            <div id="cloud-status-text" style="font-size:20px; font-weight:bold; margin:20px 0;">● Conectando...</div>
+            
+            <button onclick="window.realizarSincronizacao()" style="background:#14b8a6; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:10px;">Sincronizar Agora</button>
+            
+            <button onclick="window.gerarBackupExcelLocal()" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:20px;">💾 Gerar Backup Excel (.csv)</button>
+
+            <div style="background:#f1f5f9; padding:10px; border-radius:8px; text-align:left; font-size:10px; margin-bottom:15px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis;">
+                <strong>Debug:</strong> <span id="cloud-debug-url">---</span> | <span id="cloud-debug-lib">---</span>
+            </div>
+
+            <button onclick="window.fecharConfigCloud()" style="background:none; border:none; color:#64748b; cursor:pointer; text-decoration: underline;">Fechar Painel</button>
         </div>
     </div>
     
