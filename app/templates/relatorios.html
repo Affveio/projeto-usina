@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios e Resumos{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" style="grid-template-columns: 1fr;">
+    <div class="card">
+        <h2 class="card-title">Resumo de Consumo de Materiais</h2>
+        
+        <form method="GET" action="/relatorios" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end;">
+            <div class="form-group" style="width: 200px;">
+                <label>Selecione a Data:</label>
+                <input type="date" name="data" value="{{ data_selecionada }}">
+            </div>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 15px;">Filtrar</button>
+        </form>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px;">
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <div style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Volume Produzido</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--primary);">{{ '{:,.2f}'.format(resumo.volume_total) }} <span style="font-size: 14px; font-weight: normal;">M³</span></div>
+            </div>
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <div style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Notas Emitidas</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--text-main);">{{ resumo.qnt_notas }}</div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 14px; margin-bottom: 10px; color: var(--text-muted);">Total de Materiais Aplicados</h3>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border-color); background-color: #f8f9fa;">
+                    <th style="padding: 10px;">Material</th>
+                    <th style="padding: 10px;">Quantidade Total</th>
+                    <th style="padding: 10px;">Unidade</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Cimento</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_cimento) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Areia Natural</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_areia) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Brita 0</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_brita0) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Brita 1</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_brita1) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Água Adicionada</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_agua) }}</td>
+                    <td style="padding: 10px;">LTS</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Água Retida (Umidade)</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_agua_retida) }}</td>
+                    <td style="padding: 10px;">LTS</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Mira 410</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_mira) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: 600;">Recover</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_recover) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; font-weight: 600;">Gelo</td>
+                    <td style="padding: 10px; font-family: monospace; font-size: 14px;">{{ '{:,.2f}'.format(resumo.total_gelo) }}</td>
+                    <td style="padding: 10px;">KG</td>
+                </tr>
+            </tbody>
+        </table>
+
+    </div>
+</div>
+{% endblock %}

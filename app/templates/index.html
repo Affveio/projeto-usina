@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Emissão de Comprovante de Concretagem{% endblock %}
+
+{% block content %}
+<!-- Calculadora de Materiais (Topo) -->
+<div class="materials-banner">
+    <div class="mat-item">
+        <div class="mat-name">Cimento</div>
+        <div class="mat-value"><span id="lbl_cimento">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Areia Natural</div>
+        <div class="mat-value"><span id="lbl_areia">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Água</div>
+        <div class="mat-value"><span id="lbl_agua">0,00</span> <span style="font-size:12px; font-weight:normal;">L</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Gelo</div>
+        <div class="mat-value"><span id="lbl_gelo">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Brita 0</div>
+        <div class="mat-value"><span id="lbl_brita0">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Brita 1</div>
+        <div class="mat-value"><span id="lbl_brita1">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Mira 410</div>
+        <div class="mat-value"><span id="lbl_mira">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+    <div class="mat-item">
+        <div class="mat-name">Recover</div>
+        <div class="mat-value"><span id="lbl_recover">0,00</span> <span style="font-size:12px; font-weight:normal;">kg</span></div>
+    </div>
+</div>
+
+<div class="dashboard-container">
+    <!-- Coluna Principal (Formulário) -->
+    <div class="card">
+        <h2 class="card-title">Dados da Nota e Carga</h2>
+        
+        <form id="notaForm" method="POST" action="/salvar_nota">
+            <input type="hidden" name="traco_id" id="traco_id" value="">
+            <input type="hidden" name="motorista_id" id="motorista_id" value="">
+            
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nº Nota Fiscal</label>
+                    <input type="text" name="numero_nota" value="{{ proximo_numero }}" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Data</label>
+                    <input type="date" name="data" id="data_input" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Hora Mistura</label>
+                    <input type="time" name="hora_mistura" required>
+                </div>
+                <div class="form-group">
+                    <label>Hora Saída</label>
+                    <input type="time" name="hora_saida" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Silo</label>
+                    <select name="silo_id" required>
+                        {% for s in silos %}
+                        <option value="{{ s.id }}">{{ s.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Quantidade (M³)</label>
+                    <input type="number" id="volume_input" name="volume_m3" step="0.5" value="1.0" min="0.5" style="font-weight: bold; color: var(--primary);" required>
+                </div>
+                
+                <!-- UMIDADE -->
+                <div class="form-group full" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    <label style="color: var(--primary);">▼ Configuração de Umidade (%)</label>
+                </div>
+                <div class="form-group">
+                    <label>Umidade Areia (%)</label>
+                    <input type="number" step="0.01" id="umidade_areia" name="umidade_areia" value="4.60" required>
+                </div>
+                <div class="form-group">
+                    <label>Umidade Brita 0 (%)</label>
+                    <input type="number" step="0.01" id="umidade_brita0" name="umidade_brita0" value="1.43" required>
+                </div>
+                <div class="form-group">
+                    <label>Umidade Brita 1 (%)</label>
+                    <input type="number" step="0.01" id="umidade_brita1" name="umidade_brita1" value="0.32" required>
+                </div>
+                <div class="form-group"></div> <!-- Spacer -->
+
+                <div class="form-group full" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    <label>Local / Aplicação</label>
+                    <input type="text" name="local" value="VPC 15 - ( KM - 247 + 060 VALE VIAS )" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Água Colocada Usina (L)</label>
+                    <input type="number" name="agua_colocada_l" id="agua_colocada_l">
+                </div>
+                <div class="form-group">
+                    <label>Folga d'Água Obra (L)</label>
+                    <input type="number" name="folga_agua_obra_l" id="folga_agua_obra_l">
+                </div>
+                
+                <div class="form-group">
+                    <label>Gelo (KG)</label>
+                    <input type="number" name="gelo_kg" id="gelo_kg" value="0">
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('notaForm').reset(); recalcular();">Limpar Tudo</button>
+                <button type="button" class="btn btn-primary" id="btnSalvarNota">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+                    Imprimir Nota (Gerar PDF)
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Coluna Direita (Seleções Rápidas) -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+        
+        <!-- Traços -->
+        <div class="card" style="padding: 15px;">
+            <h2 class="card-title" style="margin-bottom: 10px; font-size: 14px;">Selecionar Traço (<span id="count_tracos">0</span>)</h2>
+            <input type="text" id="buscaTraço" placeholder="Buscar traço..." style="width: 100%; margin-bottom: 10px; font-size: 12px; padding: 8px;">
+            <ul class="quick-list" id="lista_tracos" style="max-height: 150px;">
+                {% for t in tracos %}
+                <li onclick="selecionarTraco({{ t.id }}, this)" data-search="{{ t.codigo | lower }}">{{ t.codigo }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Caminhões & Motoristas -->
+        <div class="card" style="padding: 15px; flex-grow: 1;">
+            <h2 class="card-title" style="margin-bottom: 10px; font-size: 14px;">Motorista e Betoneira</h2>
+            
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:5px;">Placa da Betoneira</label>
+            <select name="betoneira_id" id="betoneira_select" style="width: 100%; margin-bottom: 15px;" form="notaForm">
+                <option value="">Selecione...</option>
+                {% for b in betoneiras %}
+                <option value="{{ b.id }}">{{ b.placa }}</option>
+                {% endfor %}
+            </select>
+
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:5px;">Motorista Responsável</label>
+            <input type="text" id="buscaMotorista" placeholder="Buscar motorista..." style="width: 100%; margin-bottom: 10px; font-size: 12px; padding: 8px;">
+            <ul class="quick-list" id="lista_motoristas" style="max-height: 120px;">
+                {% for m in motoristas %}
+                <li onclick="selecionarMotorista({{ m.id }}, this)" data-search="{{ m.nome | lower }}">{{ m.nome }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // Define a data de hoje por padrão
+    document.getElementById('data_input').valueAsDate = new Date();
+
+    let tracoSelecionado = null;
+
+    function selecionarTraco(id, el) {
+        document.querySelectorAll('#lista_tracos li').forEach(li => li.classList.remove('selected'));
+        el.classList.add('selected');
+        document.getElementById('traco_id').value = id;
+        
+        fetch(`/api/traco/${id}`)
+            .then(response => response.json())
+            .then(data => {
+                tracoSelecionado = data;
+                recalcular();
+            });
+    }
+
+    function selecionarMotorista(id, el) {
+        document.querySelectorAll('#lista_motoristas li').forEach(li => li.classList.remove('selected'));
+        el.classList.add('selected');
+        document.getElementById('motorista_id').value = id;
+    }
+
+    function recalcular() {
+        if (!tracoSelecionado) return;
+        
+        const volume = parseFloat(document.getElementById('volume_input').value) || 0;
+        
+        // Umidades %
+        const umi_areia = parseFloat(document.getElementById('umidade_areia').value) || 0;
+        const umi_brita0 = parseFloat(document.getElementById('umidade_brita0').value) || 0;
+        const umi_brita1 = parseFloat(document.getElementById('umidade_brita1').value) || 0;
+
+        // Materiais básicos * volume (SECO)
+        const c_cimento_seco = tracoSelecionado.cimento_kg * volume;
+        const c_areia_seca = tracoSelecionado.areia_kg * volume;
+        const c_agua_seca = tracoSelecionado.agua_l * volume;
+        const c_brita0_seca = tracoSelecionado.brita0_kg * volume;
+        const c_brita1_seca = tracoSelecionado.brita1_kg * volume;
+        const c_mira = tracoSelecionado.mira410_kg * volume;
+        const c_recover = tracoSelecionado.recover_kg * volume;
+
+        // Correção de Umidade (Peso Úmido e Água Retida)
+        const c_areia_corrigida = c_areia_seca * (1 + (umi_areia / 100));
+        const c_brita0_corrigida = c_brita0_seca * (1 + (umi_brita0 / 100));
+        const c_brita1_corrigida = c_brita1_seca * (1 + (umi_brita1 / 100));
+
+        const agua_da_areia = c_areia_corrigida - c_areia_seca;
+        const agua_da_brita0 = c_brita0_corrigida - c_brita0_seca;
+        const agua_da_brita1 = c_brita1_corrigida - c_brita1_seca;
+
+        const agua_retida_total = agua_da_areia + agua_da_brita0 + agua_da_brita1;
+        const c_agua_corrigida = c_agua_seca - agua_retida_total;
+
+        // Atualiza UI
+        document.getElementById('lbl_cimento').textContent = c_cimento_seco.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('lbl_areia').textContent = c_areia_corrigida.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('lbl_agua').textContent = c_agua_corrigida.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('lbl_brita0').textContent = c_brita0_corrigida.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('lbl_brita1').textContent = c_brita1_corrigida.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('lbl_mira').textContent = c_mira.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('lbl_recover').textContent = c_recover.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    document.getElementById('volume_input').addEventListener('input', recalcular);
+    document.getElementById('umidade_areia').addEventListener('input', recalcular);
+    document.getElementById('umidade_brita0').addEventListener('input', recalcular);
+    document.getElementById('umidade_brita1').addEventListener('input', recalcular);
+
+    // Filtros
+    document.getElementById('buscaTraço').addEventListener('input', function(e) {
+        const text = e.target.value.toLowerCase();
+        let count = 0;
+        document.querySelectorAll('#lista_tracos li').forEach(li => {
+            if (li.dataset.search.includes(text)) {
+                li.style.display = '';
+                count++;
+            } else {
+                li.style.display = 'none';
+            }
+        });
+        document.getElementById('count_tracos').textContent = count;
+    });
+
+    document.getElementById('buscaMotorista').addEventListener('input', function(e) {
+        const text = e.target.value.toLowerCase();
+        document.querySelectorAll('#lista_motoristas li').forEach(li => {
+            if (li.dataset.search.includes(text)) {
+                li.style.display = '';
+            } else {
+                li.style.display = 'none';
+            }
+        });
+    });
+
+    // Inicia contagem de traços
+    document.getElementById('count_tracos').textContent = document.querySelectorAll('#lista_tracos li').length;
+
+    // Submissão do form
+    document.getElementById('btnSalvarNota').addEventListener('click', function() {
+        if (!tracoSelecionado) {
+            alert("Por favor, selecione um traço.");
+            return;
+        }
+        
+        const form = document.getElementById('notaForm');
+        if(!form.checkValidity()){
+            form.reportValidity();
+            return;
+        }
+
+        const formData = new FormData(form);
+        
+        fetch('/salvar_nota', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Abre a nota para impressão em nova guia
+                window.open(`/imprimir/${data.nota_id}?t=${Date.now()}`, '_blank');
+                // Recarrega a pagina atual apos 1 segundo para proxima nota
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert("Erro ao salvar a nota: " + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert("Erro de conexão ao salvar a nota.");
+        });
+    });
+
+</script>
+{% endblock %}

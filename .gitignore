@@ -1,0 +1,23 @@
+# Backups e Prototipos Antigos
+*_BACKUP_*.html
+prototipo_novo_sistema.html
+Comprovante_Concretagem_Em_Branco.html
+
+# Python e Ambiente
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Scripts Locais
+ler_excel.py
+gerar_excel_comprovante.py
+
+# Gemine Artifacts
+.gemini/
+scratch/
+Analise_Excel.txt
+supabase_setup.sql
+
+# Imagens de rascunho
+Logo moderno*.png

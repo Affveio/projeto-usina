@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATERPA - Sistema de Usina de Concreto</title>
+    
+    <!-- Bibliotecas Externas -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Estilos Locais -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar no-print">
+        <div class="logo-area">
+            ATERPA <span>Usina</span>
+        </div>
+        <ul class="menu" id="menuLateral">
+            <li><a href="#" onclick="mudarAba('emissao', this)" class="active">Nova Nota (Emissão)</a></li>
+            <li><a href="#" onclick="mudarAba('historico', this)">Histórico de Notas</a></li>
+            <li><a href="#" onclick="mudarAba('tracos', this)">🧪 Cadastro de Traços</a></li>
+            <li><a href="#" onclick="mudarAba('frota', this)">🚚 Gestão de Frota</a></li>
+            <li><a href="#" onclick="mudarAba('umidade', this)">💧 Correção de Umidade</a></li>
+            <li><a href="#" onclick="mudarAba('nota-preview', this)">📄 Visualização da Nota</a></li>
+            <li><a href="#" onclick="mudarAba('relatorios', this)">Relatórios de Consumo</a></li>
+            <li><a href="#" onclick="mudarAba('resumo', this)">📅 Resumo Diário</a></li>
+            <li><a href="#" onclick="mudarAba('segunda-via', this)">🖨️ Segunda Via</a></li>
+            <li><a href="#" onclick="abrirConfigCloud()" style="color: #fbbf24;">☁️ Configurar Nuvem</a></li>
+        </ul>
+    </aside>
+
+    <!-- ÁREAS DE CONTEÚDO (MAIN) -->
+    
+    <!-- Aba Emissão (Padrão) -->
+    <main id="aba-emissao" class="main-content">
+        <div style="padding: 10px 20px; background: #f4f7fb; overflow: hidden; display: flex; flex-direction: column; height: 100%;">
+            <!-- Painel de Silos -->
+            <div style="display: flex; gap: 15px; margin-bottom: 8px;">
+                <div class="card-silo" style="flex: 1; border-left: 4px solid #64748b; padding: 10px; background: white; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0;">
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">SILO 1 (CIMENTO)</div>
+                        <div style="font-size: 18px; font-weight: 800; color: #1e293b;" id="visorSilo1">0,0 <span style="font-size: 10px; color: #94a3b8;">KG</span></div>
+                    </div>
+                    <button onclick="abastecerSilo('Silo 1')" class="btn-sm">+ Abastecer</button>
+                </div>
+                <div class="card-silo" style="flex: 1; border-left: 4px solid #64748b; padding: 10px; background: white; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0;">
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">SILO 2 (CIMENTO)</div>
+                        <div style="font-size: 18px; font-weight: 800; color: #1e293b;" id="visorSilo2">0,0 <span style="font-size: 10px; color: #94a3b8;">KG</span></div>
+                    </div>
+                    <button onclick="abastecerSilo('Silo 2')" class="btn-sm">+ Abastecer</button>
+                </div>
+            </div>
+
+            <!-- Tabela de KPIs Topo -->
+            <table class="materials-table" style="margin-bottom: 8px;">
+                <thead id="header-barra-materiais"></thead>
+                <tbody id="body-barra-materiais"></tbody>
+            </table>
+
+            <div class="excel-layout">
+                <!-- Coluna de Formulario -->
+                <div class="excel-form-col">
+                    <div class="form-row"><div class="form-label">Nº NOTA FISCAL</div><input type="number" class="form-input" id="inputNF" value="0" style="font-weight: bold; font-size: 14px;"></div>
+                    <div class="form-row"><div class="form-label">DATA</div><input type="text" class="form-input" id="inputDate"></div>
+                    <div class="form-row"><div class="form-label">HORA SAIDA</div><input type="text" class="form-input" id="inputHoraSaida"></div>
+                    
+                    <div class="form-row">
+                        <div class="form-label">SILO</div>
+                        <select class="form-input" id="inputSilo"><option>Silo 1</option><option selected>Silo 2</option></select>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-label">BETONEIRA</div>
+                        <input type="text" class="form-input" id="inputPlacaDisplay" readonly>
+                        <input type="text" class="form-input" id="inputFrota">
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-label">MOTORISTA</div>
+                        <input type="text" class="form-input" id="inputMotMatriculaDisplay" style="max-width: 65px;">
+                        <input type="text" class="form-input" id="inputMotoristaDisplay" readonly>
+                    </div>
+
+                    <div class="form-row"><div class="form-label">LOCAL</div><input type="text" class="form-input" id="inputLocal"></div>
+                    <div class="form-row"><div class="form-label">TRAÇO</div><input type="text" class="form-input" id="inputTracoDisplay" readonly></div>
+                    <div class="form-row"><div class="form-label">QTD M³</div><input type="number" class="form-input" id="inputVolume" step="0.5" value="0"></div>
+                    <div class="form-row"><div class="form-label">AGUA COLOCADA</div><input type="number" class="form-input" id="inputAguaUsina"></div>
+                    <div class="form-row"><div class="form-label">AGUA OBR</div><input type="number" class="form-input" id="inputAguaObra" readonly></div>
+                    
+                    <button class="btn-imprimir" onclick="imprimirNota()">
+                        GRAVAR E IMPRIMIR NOTA
+                    </button>
+                </div>
+
+                <!-- Listas Selecionáveis -->
+                <div class="excel-lists-col">
+                    <div class="list-container"><ul class="excel-list" id="listaTracos"></ul></div>
+                    <div class="list-container"><ul class="excel-list" id="listaPlacas"></ul></div>
+                    <div class="list-container"><ul class="excel-list" id="listaMotoristas"></ul></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Outras abas (serão populadas via app.js) -->
+    <main id="aba-historico" class="main-content" style="display:none;"></main>
+    <main id="aba-tracos" class="main-content" style="display:none;"></main>
+    <main id="aba-frota" class="main-content" style="display:none;"></main>
+    <main id="aba-umidade" class="main-content" style="display:none;"></main>
+    <main id="aba-nota-preview" class="main-content" style="display:none;"></main>
+    <main id="aba-relatorios" class="main-content" style="display:none;"></main>
+    <main id="aba-resumo" class="main-content" style="display:none;"></main>
+    <main id="aba-segunda-via" class="main-content" style="display:none;"></main>
+
+    <!-- AREA DE IMPRESSÃO (ESCONDIDA) -->
+    <div id="print-section"></div>
+
+    <!-- Scripts da Aplicação -->
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+
+</body>
+</html>

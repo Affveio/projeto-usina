@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aterpa - Sistema de Usina</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0056b3;
+            --primary-hover: #004494;
+            --danger: #d32f2f;
+            --bg-color: #f4f7fb;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --text-muted: #6c757d;
+            --border-color: #e0e0e0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        
+        body { background-color: var(--bg-color); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+
+        /* Sidebar */
+        .sidebar { width: 260px; background-color: #1e293b; color: #fff; display: flex; flex-direction: column; flex-shrink: 0;}
+        .logo-area { padding: 20px; font-size: 24px; font-weight: 700; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 10px; }
+        .logo-area span { color: #60a5fa; }
+        .menu { list-style: none; padding: 20px 0; flex-grow: 1; }
+        .menu li a { display: block; padding: 15px 25px; color: #cbd5e1; text-decoration: none; font-weight: 500; transition: 0.2s; }
+        .menu li a:hover, .menu li a.active { background-color: #334155; color: #fff; border-left: 4px solid #60a5fa; }
+
+        /* Main Content */
+        .main-content { flex-grow: 1; display: flex; flex-direction: column; overflow-y: auto; }
+        
+        .header { background: var(--card-bg); padding: 20px 30px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .user-profile { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+        .avatar { width: 35px; height: 35px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        .dashboard-container { padding: 30px; display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+
+        .card { background: var(--card-bg); border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border: 1px solid var(--border-color); }
+        .card-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); color: var(--primary); }
+
+        /* Form Grid */
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group.full { grid-column: span 2; }
+        .form-group label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+        
+        input, select { padding: 10px 14px; border: 1px solid #ced4da; border-radius: 6px; font-size: 14px; outline: none; transition: border 0.2s; }
+        input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.1); }
+        input[readonly] { background-color: #f8f9fa; cursor: not-allowed; }
+
+        /* Materials Top Bar */
+        .materials-banner { background: #1e293b; border-radius: 12px; margin: 30px 30px 0 30px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; overflow: hidden; }
+        .mat-item { background: #2f3e50; padding: 15px 10px; text-align: center; color: white; }
+        .mat-name { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 5px; }
+        .mat-value { font-size: 18px; font-weight: 700; transition: color 0.3s ease; }
+
+        /* Lists */
+        .quick-list { list-style: none; max-height: 480px; overflow-y: auto; }
+        .quick-list li { padding: 10px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: 0.2s; border: 1px solid transparent; margin-bottom: 5px; }
+        .quick-list li:hover { background: #f8f9fa; border-color: #e0e0e0; }
+        .quick-list li.selected { background: #e6f0fa; border-color: var(--primary); color: var(--primary); font-weight: 600; }
+
+        /* Buttons */
+        .actions { margin-top: 25px; display: flex; gap: 15px; justify-content: flex-end; }
+        .btn { padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: 0.2s; display: flex; align-items: center; gap: 8px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-secondary { background: white; border: 1px solid var(--border-color); color: var(--text-main); }
+        .btn-secondary:hover { background: #f8f9fa; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="logo-area">
+            ATERPA <span>Usina</span>
+        </div>
+        <ul class="menu">
+            <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Nova Nota (Emissão)</a></li>
+            <li><a href="/historico" class="{% if request.path == '/historico' %}active{% endif %}">Histórico de Notas</a></li>
+            <li><a href="/relatorios" class="{% if request.path == '/relatorios' %}active{% endif %}">Relatórios (Resumo)</a></li>
+            <li><a href="/cadastros" class="{% if request.path == '/cadastros' %}active{% endif %}">Cadastros Basicos</a></li>
+        </ul>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-content">
+        <header class="header">
+            <h1>{% block title %}Painel{% endblock %}</h1>
+            <div class="user-profile">
+                <span>Operador Usina</span>
+                <div class="avatar">O</div>
+            </div>
+        </header>
+
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>

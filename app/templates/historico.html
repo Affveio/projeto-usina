@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico de Notas Emitidas{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" style="grid-template-columns: 1fr;">
+    <div class="card">
+        <h2 class="card-title">Últimas 100 Notas</h2>
+        
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+            <thead style="border-bottom: 2px solid var(--border-color);">
+                <tr>
+                    <th style="padding: 10px;">Nº Nota</th>
+                    <th style="padding: 10px;">Data</th>
+                    <th style="padding: 10px;">Motorista</th>
+                    <th style="padding: 10px;">Betoneira</th>
+                    <th style="padding: 10px;">Traço</th>
+                    <th style="padding: 10px;">Volume (m³)</th>
+                    <th style="padding: 10px; text-align: right;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for n in notas %}
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; font-weight: bold; color: var(--primary);">{{ n.numero_nota }}</td>
+                    <td style="padding: 10px;">{{ n.data }}</td>
+                    <td style="padding: 10px;">{{ n.motorista.nome if n.motorista else '-' }}</td>
+                    <td style="padding: 10px;">{{ n.betoneira.placa if n.betoneira else '-' }}</td>
+                    <td style="padding: 10px;">{{ n.traco.codigo if n.traco else '-' }}</td>
+                    <td style="padding: 10px;">{{ n.volume_m3 }}</td>
+                    <td style="padding: 10px; text-align: right;">
+                        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; display: inline-flex;" onclick="window.open('/imprimir/{{ n.id }}', '_blank')">2ª Via (PDF)</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="padding: 20px; text-align: center; color: var(--text-muted);">Nenhuma nota emitida ainda.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

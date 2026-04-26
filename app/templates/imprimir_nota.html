@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Comprovante de Concretagem - {{ nota.numero_nota }}</title>
+<style>
+    @page { size: A4 portrait; margin: 5mm; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 210mm;
+        min-height: 297mm;
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        background: #fff;
+        color: #000;
+    }
+    body {
+        margin: 0;
+        padding: 0;
+        display: block;
+    }
+    .page {
+        width: calc(210mm - 10mm);
+        min-height: calc(297mm - 10mm);
+        padding: 3mm !important;
+        background: #fff;
+        box-shadow: none;
+        border: none;
+        box-sizing: border-box;
+        margin: 0 auto !important;
+        page-break-inside: avoid;
+        page-break-after: avoid;
+        line-height: 1;
+    }
+    .box { border: 1px solid #000; margin-bottom: 0px !important; }
+    .row { display: flex; border-bottom: 1px solid #000; margin: 0 !important; padding: 0 !important; line-height: 1 !important; }
+    .row:last-child { border-bottom: none; }
+    .col { border-right: 1px solid #000; padding: 1px 2px !important; flex: 1; display: flex; flex-direction: column; justify-content: flex-start; margin: 0 !important; min-height: 0 !important; }
+    .col:last-child { border-right: none; }
+    .label { font-size: 8px; margin-bottom: 0 !important; color: #000; line-height: 1; }
+    .value { flex-grow: 1; min-height: 0; font-weight: bold; font-size: 10px; margin: 0 !important; padding: 0 !important; line-height: 1.1; }
+    .section-title { font-weight: bold; font-size: 10px; background-color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 2px 4px !important; border-bottom: 1px solid #000; text-transform: uppercase; margin: 0 !important; line-height: 1; }
+    .materials-aplicados { display: flex; flex-wrap: wrap; gap: 0; }
+    .materials-col { flex: 1; min-width: auto; }
+    .material-item { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0; margin: 0; font-size: 10px; line-height: 1; }
+    .material-label { font-weight: bold; }
+    .material-value { min-width: 80px; text-align: right; }
+    .materials-blank { min-height: 40px; display: flex; align-items: center; padding: 0; }
+    .materials-blank .material-row { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 10px; line-height: 1; }
+    .material-note { font-size: 9px; }
+    
+    table { width: 100%; border-collapse: collapse; margin: 0 !important; }
+    th, td { border: 1px solid #000; padding: 1px 3px !important; font-size: 9px; text-align: center; margin: 0 !important; line-height: 1; }
+    th { background-color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 8px; font-weight: bold; }
+    
+    img { width: 220px !important; max-width: 220px !important; height: auto !important; }
+    .text-center { text-align: center; justify-content: center; align-items: center; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+    .bold { font-weight: bold; }
+
+    @media print {
+        @page { size: A4 portrait; margin: 5mm; }
+        html, body { margin: 0; padding: 0; width: 210mm; min-height: 297mm; }
+        body { background: #fff; padding: 0; display: block; margin: 0 auto; }
+        .page { width: calc(210mm - 10mm); min-height: calc(297mm - 10mm); padding: 4mm; box-shadow: none; border: none; margin: 0; }
+    }
+</style>
+</head>
+<body onload="{% if format == 'print' %}window.print();{% endif %}">
+    <div class="page">
+        <!-- HEADER -->
+        <div class="row box" style="align-items: stretch;">
+            <div class="col" style="flex: 1.8; border-right: none; display: flex; align-items: flex-start; justify-content: flex-start; padding: 3px 5px 1px 5px;">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="width: 220px; height: auto; object-fit: contain; margin-left: -5px;">
+            </div>
+            <div class="col text-center" style="flex: 2.7; border-right: 1px solid #000; border-left: none; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; padding-top: 2px;">
+                <div class="bold" style="font-size: 18px; margin-bottom: 0px; line-height: 1;">CONSTRUTORA ATERPA S/A</div>
+                <div style="font-size: 11px; line-height: 1.1; margin-top: 1px;">AVENIDA HERMANO RIBEIRO DA SILVA - S/N</div>
+                <div style="font-size: 11px; line-height: 1.1;">CENTRO ANTIGO - COCALINHO - MT</div>
+                <div style="font-size: 11px; line-height: 1.1;">CEP: 78860000</div>
+            </div>
+            <div class="col" style="flex: 2; padding: 0; justify-content: space-between;">
+                <div class="row" style="height: 60%; align-items: stretch;">
+                    <div class="col text-center" style="justify-content: center; border-bottom: none;">
+                        <span class="bold" style="font-size:11px;">COMPROVANTE DE<br>SERVIÇO DE<br>CONCRETAGEM</span>
+                    </div>
+                    <div class="col text-center" style="justify-content: center; border-bottom: none;">
+                        <span class="bold" style="font-size: 11px;">Nº</span><br>
+                        <span style="font-size: 16px; font-weight: bold;">{{ nota.numero_nota }}</span>
+                    </div>
+                </div>
+                <div class="row" style="height: 40%; border-top: 1px solid #000;">
+                    <div class="col">
+                        <span class="label">C.N.P.J.</span>
+                        <span class="value text-center" style="font-size:10px;">17.162.983/0045-86</span>
+                    </div>
+                    <div class="col">
+                        <span class="label">INSCRIÇÃO ESTADUAL</span>
+                        <span class="value text-center" style="font-size:10px;">00.000.226-0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTRATANTE -->
+        <div class="box">
+            <div class="section-title">CONTRATANTE</div>
+            <div class="row">
+                <div class="col" style="flex: none; width: 40%; box-sizing: border-box;"><div class="label">NOME / RAZÃO SOCIAL</div><div class="value">CONSTRUTORA ATERPA S/A</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">C.N.P.J. / C.P.F.</div><div class="value">{{ nota.cliente.cnpj }}</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">INSCRIÇÃO ESTADUAL</div><div class="value">{{ nota.cliente.ie }}</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">DATA DA EMISSÃO</div><div class="value">{{ nota.data }}</div></div>
+            </div>
+            <div class="row">
+                <div class="col" style="flex: none; width: 40%; box-sizing: border-box;"><div class="label">ENDEREÇO</div><div class="value">AVENIDA HERMANO RIBEIRO DA SILVA - S/N</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">BAIRRO / DISTRITO</div><div class="value">CENTRO ANTIGO</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">CEP</div><div class="value">78680-000</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">DATA DA SAÍDA</div><div class="value">{{ nota.data }}</div></div>
+            </div>
+            <div class="row">
+                <div class="col" style="flex: none; width: 40%; box-sizing: border-box;"><div class="label">MUNICÍPIO</div><div class="value">COCALINHO</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">UF</div><div class="value">MT</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">FONE / FAX</div><div class="value">(48) 98803-1491</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">HORA DA SAÍDA</div><div class="value">{{ nota.hora_saida }}</div></div>
+            </div>
+        </div>
+
+        <!-- DADOS DA OBRA -->
+        <div class="box">
+            <div class="section-title">DADOS DA OBRA</div>
+            <div class="row">
+                <div class="col" style="flex: none; width: 60%; box-sizing: border-box;"><div class="label">NOME DA OBRA</div><div class="value">CONSTRUTORA ATERPA S/A</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">CONTATO NA OBRA</div><div class="value">ENC. ANTONIO</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">FONE / CELULAR</div><div class="value">(75) 99929-6433</div></div>
+            </div>
+            <div class="row">
+                <div class="col" style="flex: none; width: 60%; box-sizing: border-box;"><div class="label">ENDEREÇO</div><div class="value">AVENIDA HERMANO RIBEIRO DA SILVA - S/N</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">BAIRRO / DISTRITO</div><div class="value">CENTRO ANTIGO</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">CEP</div><div class="value">78680-000</div></div>
+            </div>
+            <div class="row">
+                <div class="col" style="flex: none; width: 40%; box-sizing: border-box;"><div class="label">MUNICÍPIO</div><div class="value">COCALINHO</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">UF</div><div class="value">MT</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">CONTRATO</div><div class="value">5500119009</div></div>
+                <div class="col" style="flex: none; width: 20%; box-sizing: border-box;"><div class="label">USINA ENTREGA</div><div class="value">CENTRAL ATERPA</div></div>
+            </div>
+            <div class="row">
+                <div class="col"><div class="label">OBSERVAÇÕES</div><div class="value" style="height: 15px;">{{ nota.local }}</div></div>
+            </div>
+        </div>
+
+        <!-- DADOS DO SERVIÇO -->
+        <div class="box">
+            <div class="section-title">DADOS DO SERVIÇO</div>
+            <table style="border: none; border-bottom: 1px solid #000;">
+                <tr>
+                    <th style="width: 15%; border-top: none; border-left: none;">APLICAÇÃO</th>
+                    <th style="width: 45%; border-top: none;">DESCRIÇÃO DO CÓDIGO DO PRODUTO / USINA</th>
+                    <th style="width: 8%; border-top: none;">UNID.</th>
+                    <th style="width: 10%; border-top: none;">QUANT.</th>
+                    <th style="width: 11%; border-top: none;">PREÇO UNIT.</th>
+                    <th style="width: 11%; border-top: none; border-right: none;">PREÇO TOTAL</th>
+                </tr>
+                <tr>
+                    <td style="height: 34px; border-left: none; border-bottom: none; vertical-align: top; padding-top: 2px;"></td>
+                    <td style="border-bottom: none; vertical-align: top; padding-top: 2px; text-align: left; padding-left: 4px;">{{ nota.traco.codigo if nota.traco else '' }}</td>
+                    <td style="border-bottom: none; vertical-align: top; padding-top: 2px;">M3</td>
+                    <td style="border-bottom: none; vertical-align: top; padding-top: 2px;">{{ "{:,.1f}".format(nota.volume_m3|float).replace('.', ',') if nota.volume_m3 else '' }}</td>
+                    <td style="border-bottom: none; vertical-align: top; padding-top: 2px;"></td>
+                    <td style="border-bottom: none; border-right: none; vertical-align: top; padding-top: 2px;"></td>
+                </tr>
+            </table>
+            <div class="row" style="border-bottom: 1px solid #000;">
+                <div class="col" style="flex: none; width: 89%; border-right: 1px solid #000; display: flex; flex-direction: row; align-items: center; justify-content: flex-end; font-weight: bold; padding: 1px 4px 1px 2px; box-sizing: border-box; height: 14px;">TOTAL SERVIÇO</div>
+                <div class="col" style="flex: none; width: 11%; border-right: none; padding: 1px; box-sizing: border-box; height: 14px;"></div>
+            </div>
+            <div class="row" style="padding: 2px 3px 2px; align-items: flex-start;">
+                <div style="flex: 2.4; display: flex; flex-direction: column; gap: 1px;">
+                    <div style="display: flex; align-items: center;">
+                        <span class="bold" style="width: 210px; text-align: right; margin-right: 8px; font-size: 11px;">Diâmetro máximo característico de</span>
+                        <div style="display: flex; align-items: center; flex: 1;">
+                            <span style="border:1px solid #000; display:inline-block; width:45px; text-align:center; padding: 1px 0; height: 14px; box-sizing: border-box;">{{ "{:,.1f}".format(nota.volume_m3|float).replace('.', ',') if nota.volume_m3 else '' }}</span> 
+                            <span class="bold" style="margin-left: 5px; font-size: 10px;">M3</span>
+                            <span style="margin: 0 8px; font-weight: bold;">-</span>
+                            <span style="border:1px solid #000; display:flex; align-items: center; justify-content: flex-start; padding: 1px 4px; font-size:10px; font-weight: bold; flex: 1; height: 14px; box-sizing: border-box;">
+                                {% if nota.traco and nota.traco.cimento_kg and nota.traco.cimento_kg|float > 0 %}
+                                    CONSUMO {{ "{:,.0f}".format(nota.traco.cimento_kg|float).replace('.', ',') }} Kg
+                                {% else %}
+                                    CONSUMO
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <span class="label" style="width: 210px; text-align: right; margin-right: 8px; margin-bottom: 0;">TIPO</span>
+                        <div style="display: flex; align-items: center; flex: 1;">
+                            <span style="border:1px solid #000; display:flex; align-items: center; width: 100%; padding: 1px 4px; font-size:10px; font-weight:bold; height: 14px; box-sizing: border-box;">
+                                FCK {{ nota.traco.fck if nota.traco else '' }} MPA
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div style="flex: 1.6; display: flex; flex-direction: column; gap: 3px; font-size:10px; font-weight: bold; border-left: 1px solid transparent; padding-left: 12px;">
+                    <div style="display: flex; align-items: center; height: 14px;">
+                        <span style="width: 60px;">- DMC B0</span>
+                        <span style="border:1px solid #000; padding:1px 5px; width: 45px; text-align:center; height: 14px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;">9,5mm</span>
+                        <span style="margin-left: 8px; margin-right: 2px;">- CLASSE</span>
+                        <span style="border:1px solid #000; padding:1px 5px; width: 65px; text-align:center; height: 14px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;">100 A 160</span>
+                        <span style="margin-left: 4px; font-size: 10px;">MM S100</span>
+                    </div>
+                    <div style="display: flex; align-items: center; height: 14px;">
+                        <span style="width: 60px;">- DMC B1</span>
+                        <span style="border:1px solid #000; padding:1px 5px; width: 45px; text-align:center; height: 14px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;">19,00mm</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DADOS DE TRANSPORTE -->
+        <div class="box">
+            <div class="section-title">DADOS DE TRANSPORTE</div>
+            <div class="row">
+                <div class="col"><div class="label">BETONEIRA</div><div class="value">{{ nota.betoneira.placa if nota.betoneira else '' }}</div></div>
+                <div class="col"><div class="label">PLACA</div><div class="value"></div></div>
+                <div class="col"><div class="label">RE MOTORISTA</div><div class="value">{{ nota.motorista.matricula if nota.motorista else '' }}</div></div>
+                <div class="col" style="flex: 2;"><div class="label">MOTORISTA</div><div class="value">{{ nota.motorista.nome if nota.motorista else '' }}</div></div>
+            </div>
+            <table style="border: none;">
+                <tr>
+                    <th style="border-left: none;">INÍCIO MISTURA</th>
+                    <th>CHEGADA OBRA</th>
+                    <th>INÍCIO DESCARGA</th>
+                    <th>FIM DESCARGA</th>
+                    <th>SAÍDA OBRA</th>
+                    <th>CHEGADA USINA</th>
+                    <th style="border-right: none;">VELOCÍMETRO INICIAL</th>
+                </tr>
+                <tr>
+                    <td style="height: 25px; border-left: none; border-bottom: none;">{{ nota.hora_mistura }}</td>
+                    <td style="border-bottom: none;"></td>
+                    <td style="border-bottom: none;"></td>
+                    <td style="border-bottom: none;"></td>
+                    <td style="border-bottom: none;"></td>
+                    <td style="border-bottom: none;"></td>
+                    <td style="border-bottom: none; border-right: none;"></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- MATERIAIS APLICADOS -->
+        <div class="box" style="padding: 3px; font-size: 9px;">
+            <div class="bold" style="margin-bottom: 4px;">MATERIAIS APLICADOS</div>
+            <div class="materials-aplicados">
+                <div class="materials-col">
+                    {% if nota.total_agua and nota.total_agua|float > 0 %}
+                    <div class="material-item"><span class="material-label">ÁGUA</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_agua) }} LTS</span></div>
+                    {% endif %}
+                    {% if nota.gelo_kg and nota.gelo_kg|float > 0 %}
+                    <div class="material-item"><span class="material-label">GELO</span><span class="material-value">{{ nota.gelo_kg }} LTS</span></div>
+                    {% endif %}
+                    {% if nota.total_cimento and nota.total_cimento|float > 0 %}
+                    <div class="material-item"><span class="material-label">CIMENTO</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_cimento) }} KG</span></div>
+                    {% endif %}
+                    {% if nota.total_areia and nota.total_areia|float > 0 %}
+                    <div class="material-item"><span class="material-label">AREIA NATURAL</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_areia) }} KG</span></div>
+                    {% endif %}
+                    {% if nota.total_brita0 and nota.total_brita0|float > 0 %}
+                    <div class="material-item"><span class="material-label">BRITA 0</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_brita0) }} KG</span></div>
+                    {% endif %}
+                    {% if nota.total_brita1 and nota.total_brita1|float > 0 %}
+                    <div class="material-item"><span class="material-label">BRITA 1</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_brita1) }} KG</span></div>
+                    {% endif %}
+                    {% if nota.total_mira and nota.total_mira|float > 0 %}
+                    <div class="material-item"><span class="material-label">MIRA 410</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_mira) }} KG</span></div>
+                    {% endif %}
+                    {% if nota.total_recover and nota.total_recover|float > 0 %}
+                    <div class="material-item"><span class="material-label">RECOVER</span><span class="material-value">{{ '{:,.2f}'.format(nota.total_recover) }} KG</span></div>
+                    {% endif %}
+                </div>
+                <div class="materials-col materials-blank">
+                    <div class="material-row">
+                        <span class="material-label">ÁGUA RETIDA (UMIDADE)</span>
+                        <span class="material-value">{% if nota.total_agua_retida and nota.total_agua_retida|float > 0 %}{{ '{:,.2f}'.format(nota.total_agua_retida) }} LTS{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- OUTRAS ESPECIFICAÇÕES TÉCNICAS DA OBRA -->
+        <div class="box">
+            <div class="section-title">OUTRAS ESPECIFICAÇÕES TÉCNICAS DA OBRA</div>
+            <div class="row" style="padding: 3px;">
+                <span class="bold">FOLGA D' ÁGUA PARA USAR NA OBRA:</span>
+            </div>
+            <table style="border-left: none; border-right: none;">
+                <tr>
+                    <th style="width: 20%; border-left: none;">ÁGUA COLOCADA USINA</th>
+                    <th style="width: 40%;">ANTES DE DESCARREGAR CONFIRA O TRAÇO, O VOLUME E LACRE Nº</th>
+                    <th style="width: 40%; text-align: left; padding-left: 10px; border-right: none;">NÃO INCIDÊNCIA DO ICMS, NOS TERMOS DO ART. 465, INCISO II E III, DEC. 331 18/91</th>
+                </tr>
+                <tr>
+                    <td style="height: 25px; border-left: none; border-bottom: none;">{{ nota.agua_colocada_l }}</td>
+                    <td style="border-bottom: none;"></td>
+                    <td style="border-bottom: none; border-right: none;"></td>
+                </tr>
+            </table>
+            <div class="row" style="border-top: 1px solid #000;">
+                <div class="col" style="flex: 1;"><div class="label">ÁGUA COLOCAR OBRA</div><div class="value">{{ nota.folga_agua_obra_l }}</div></div>
+                <div class="col" style="flex: 1;"><div class="label">ÁGUA COLOCADA OBRA</div><div class="value"></div></div>
+                <div class="col" style="flex: 1.5; justify-content: space-between;">
+                    <div class="label">CLASSE AGRESSIVIDADE</div>
+                    <div class="value" style="display: flex; justify-content: flex-start; align-items: center; font-weight: bold; font-size: 8.5px; margin-top: 1px;">
+                        <span>CLASSE: <span style="margin-left: 10px; margin-right: 5px;">N/A</span></span>
+                        <span style="border: 1px solid #000; width: 30px; height: 14px; display: inline-block;"></span>
+                    </div>
+                </div>
+                <div class="col" style="flex: 1.5;"><div class="label">PEÇA A SER CONCRETADA</div><div class="value">0</div></div>
+            </div>
+        </div>
+        
+        <div class="box" style="padding: 3px;">
+            <div class="bold" style="margin-bottom: 3px; font-size: 8.5px;">NÃO É PERMITIDA ADIÇÃO DE ÁGUA APÓS A MISTURA FINAL DO CONCRETO.</div>
+            <div style="font-size: 8.2px;">AUTORIZO A ADIÇÃO DE <span style="border:1px solid #000; width:56px; height:14px; display:inline-block;"></span> (L) D'ÁGUA, ASSUMINDO TODA RESPONSABILIDADE SOBRE AS CONSEQUÊNCIAS NA RESISTÊNCIA E QUALIDADE DO CONCRETO.</div>
+            <div style="margin-top: 6px;">
+                <span class="bold" style="font-size:9px;">ASSINATURA RESPONSÁVEL _________________________________________________</span>
+            </div>
+        </div>
+
+        <div class="box">
+            <div style="padding: 3px; font-size: 8.8px;">
+                RECEBI (EMOS) DE <span class="bold">CONSTRUTORA ATERPA</span>, O SERVIÇO CONSTANTE NESTE DOCUMENTO.
+            </div>
+            <div class="row" style="border-top: 1px solid #000;">
+                <div class="col" style="flex: 1;"><div class="label">DATA DO RECEBIMENTO</div><div class="value" style="height: 12px;"></div></div>
+                <div class="col" style="flex: 3;"><div class="label">IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR</div><div class="value"></div></div>
+                <div class="col text-center" style="flex: 0.5; justify-content: center;"><span class="bold">Nº</span><br>{{ nota.numero_nota }}</div>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
