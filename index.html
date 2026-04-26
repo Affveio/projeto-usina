@@ -3,90 +3,122 @@
 <head>
 
     <script>
-    // database_v2.js - VERSÃO COM DOWNLOAD DE HISTÓRICO
+    // database_v2.js - VERSÃO ESPELHAMENTO TOTAL (MIRROR)
 const SUPABASE_URL = 'https://ttcycjnlzchagnneqpym.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0Y3ljam5semNoYWdubmVxcHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNjQzMTksImV4cCI6MjA5Mjc0MDMxOX0.h-K5p9r1Szx_v8EVZO4Z8nMJkPetOt0h82HHG5FV970'; 
 
-window.getCloudDebugInfo = () => ({
-    url: SUPABASE_URL,
-    key: SUPABASE_KEY.substring(0, 15) + '...',
-    lib: "VANILLA (Nativa)",
-    status: "Operacional"
-});
+window.getCloudDebugInfo = () => ({ url: SUPABASE_URL, lib: "VANILLA (Nativa)" });
 
 window.initDatabase = async () => {
     try {
         const response = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?select=id&limit=1`, {
-            method: 'GET',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+            method: 'GET', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         });
         return { success: response.ok };
     } catch (e) { return { success: false }; }
 };
 
-// Nova Função: Baixar histórico da nuvem para o dispositivo atual
-window.dbBaixarHistoricoDaNuvem = async () => {
-    try {
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=100`, {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        if (!response.ok) return { success: false };
-        
-        const notasNuvem = await response.json();
-        if (notasNuvem && notasNuvem.length > 0) {
-            // Salvar no localStorage para o sistema local ver
-            localStorage.setItem('usina_historico', JSON.stringify(notasNuvem));
-            return { success: true, count: notasNuvem.length };
-        }
-        return { success: true, count: 0 };
-    } catch (e) {
-        return { success: false, error: e.message };
-    }
+const gerarIDNota = (n) => {
+    const cleanNF = (n.nf || n.numero || n['Nº NOTA FISCAL'] || '0').toString().replace(/\D/g, '');
+    const cleanData = (n.data || '0').toString().replace(/\D/g, '');
+    const cleanHora = (n.hora_mistura || n.hora_saida || '0').toString().replace(/\D/g, '');
+    return `00000000-0000-0000-0000-${cleanNF.padStart(6,'0')}${cleanData.padStart(6,'0')}${cleanHora.padStart(4,'0')}`.substring(0, 36);
 };
 
-window.dbSincronizarTudoLocalParaNuvem = async () => {
-    let notas = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-    let frota = JSON.parse(localStorage.getItem('usina_frota') || '[]');
-    
-    if (notas.length === 0 && frota.length === 0) {
-        return { success: true };
-    }
-
-    notas = notas.map(n => {
-        if (!n.id || n.id.length < 20) {
-            const cleanNF = (n.nf || n.numero || '0').toString().replace(/\D/g, '');
-            const cleanData = (n.data || '0').toString().replace(/\D/g, '');
-            const cleanHora = (n.hora_mistura || n.hora_saida || '0').toString().replace(/\D/g, '');
-            n.id = `00000000-0000-0000-0000-${cleanNF.padStart(6,'0')}${cleanData.padStart(6,'0')}`.substring(0, 36);
+// BAIXAR TUDO (NOTAS, TRAÇOS, FROTA)
+window.dbBaixarHistoricoDaNuvem = async () => {
+    try {
+        // 1. Baixar Notas
+        const resNotas = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=100`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        if (resNotas.ok) {
+            const notasNuvem = await resNotas.json();
+            const notasLocais = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+            const mapa = {};
+            notasLocais.forEach(n => { const id = n.id || gerarIDNota(n); n.id = id; mapa[id] = n; });
+            notasNuvem.forEach(n => { if (!mapa[n.id]) mapa[n.id] = n; });
+            localStorage.setItem('usina_historico', JSON.stringify(Object.values(mapa)));
         }
-        return n;
+
+        // 2. Baixar Configurações (Traços e Frota)
+        const resConfig = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.config_global&select=dados`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        if (resConfig.ok) {
+            const data = await resConfig.json();
+            if (data && data[0] && data[0].dados) {
+                const configs = data[0].dados;
+                if (configs.frota) localStorage.setItem('usina_frota', JSON.stringify(configs.frota));
+                if (configs.tracos) localStorage.setItem('usina_tracos', JSON.stringify(configs.tracos));
+                if (configs.materiais) localStorage.setItem('usina_materiais', JSON.stringify(configs.materiais));
+            }
+        }
+        return { success: true };
+    } catch (e) { return { success: false }; }
+};
+
+// ENVIAR TUDO (NOTAS, TRAÇOS, FROTA)
+window.dbSincronizarTudoLocalParaNuvem = async () => {
+    let notasRaw = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+    let frota = JSON.parse(localStorage.getItem('usina_frota') || '[]');
+    let tracos = JSON.parse(localStorage.getItem('usina_tracos') || '[]');
+    let materiais = JSON.parse(localStorage.getItem('usina_materiais') || '[]');
+
+    const todasColunas = [
+        "id", "nf", "data", "hora_mistura", "hora_saida", "turno", "al", "placa", 
+        "matricula", "motorista", "frente", "local", "traco", "volume", "qtd", 
+        "agua_obra", "agua_usina", "agua_retida", "agua_colocada", "agua_colocar_obr",
+        "gelo", "silo", "betoneira", "materiais", "timestamp", "vias", "vias_copias"
+    ];
+
+    const notasPadronizadas = notasRaw.map(n => {
+        const novaNota = {};
+        todasColunas.forEach(col => novaNota[col] = null);
+        Object.keys(n).forEach(key => { if (todasColunas.includes(key)) novaNota[key] = n[key]; });
+        if (n.frente && !novaNota.local) novaNota.local = n.frente;
+        if (n.local && !novaNota.frente) novaNota.frente = n.local;
+        if (n.volume && !novaNota.qtd) novaNota.qtd = n.volume;
+        if (n.qtd && !novaNota.volume) novaNota.volume = n.qtd;
+        if (n.numero && !novaNota.nf) novaNota.nf = n.numero;
+        if (!novaNota.id || novaNota.id.length < 20) novaNota.id = gerarIDNota(n);
+        return novaNota;
     });
 
     try {
-        if (notas.length > 0) {
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/notas`, {
-                method: 'POST',
-                headers: {
-                    'apikey': SUPABASE_KEY,
-                    'Authorization': `Bearer ${SUPABASE_KEY}`,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'resolution=merge-duplicates'
-                },
-                body: JSON.stringify(notas)
-            });
-        }
-        return { success: true };
-    } catch (e) {
-        return { success: false, error: e.message };
-    }
+        // Enviar Notas
+        await fetch(`${SUPABASE_URL}/rest/v1/notas`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify(notasPadronizadas)
+        });
+        
+        // Enviar Configurações (Espelhamento de Traços e Frota)
+        const configData = { 
+            id: 'config_global', 
+            dados: { frota, tracos, materiais }, 
+            ultima_sinc: new Date().toISOString() 
+        };
+        await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify(configData)
+        });
+
+        return { success: true, message: "Espelhamento completo realizado!" };
+    } catch (e) { return { success: false, error: e.message }; }
 };
 
     </script>
     <script>
-    // cloud_v2.js - VERSÃO COM PULL AUTOMÁTICO
+    // cloud_v2.js - VERSÃO COM MENSAGEM DETALHADA
 window.abrirConfigCloud = () => {
     const modal = document.getElementById('cloud-modal');
     if (modal) modal.style.display = 'flex';
+    const debug = window.getCloudDebugInfo ? window.getCloudDebugInfo() : { url: '---', lib: '---' };
+    const setElem = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+    setElem('cloud-debug-url', debug.url);
+    setElem('cloud-debug-lib', debug.lib);
     const badge = document.getElementById('cloud-badge');
     const statusText = document.getElementById('cloud-status-text');
     if (badge && badge.innerText.includes('Online')) {
@@ -99,45 +131,26 @@ window.fecharConfigCloud = () => {
     if (modal) modal.style.display = 'none';
 };
 
-window.sincronizarSilencioso = async () => {
-    const badge = document.getElementById('cloud-badge');
-    if (!badge || !badge.innerText.includes('Online')) return;
-    try {
-        await window.dbSincronizarTudoLocalParaNuvem();
-    } catch (e) {}
-};
-
 window.realizarSincronizacao = async () => {
     const result = await window.dbSincronizarTudoLocalParaNuvem();
-    if (result.success) alert("✅ Sincronização concluída!");
-    else alert("❌ Erro: " + result.error);
+    if (result.success) {
+        alert(result.message || "✅ Sincronização concluída!");
+        await window.dbBaixarHistoricoDaNuvem();
+    } else {
+        alert("❌ Erro: " + result.error);
+    }
 };
 
 window.inicializarNuvem = async () => {
     const badge = document.getElementById('cloud-badge');
     if (!badge) return;
-
     badge.innerText = "● Conectando...";
     const result = await window.initDatabase ? await window.initDatabase() : { success: false };
-    
     if (result.success) {
         badge.innerText = "● Nuvem Online";
         badge.style.background = "#dcfce7";
         badge.style.color = "#166534";
-        
-        // BAIXAR HISTÓRICO DA NUVEM (PULL)
-        const pull = await window.dbBaixarHistoricoDaNuvem();
-        if (pull.success && pull.count > 0) {
-            console.log(`Nuvem: ${pull.count} notas baixadas.`);
-            // Se estiver na aba de histórico, recarrega a tela
-            if (typeof window.renderizarHistorico === 'function') window.renderizarHistorico();
-            else if (typeof window.carregarHistorico === 'function') window.carregarHistorico();
-            // Tenta forçar atualização da tabela se ela existir
-            const btnHist = document.querySelector('[onclick*="Historico"]');
-            if (btnHist) btnHist.click(); 
-        }
-
-        setInterval(window.sincronizarSilencioso, 5 * 60 * 1000);
+        await window.dbBaixarHistoricoDaNuvem();
     } else {
         badge.innerText = "● Nuvem Offline";
     }
@@ -145,7 +158,7 @@ window.inicializarNuvem = async () => {
 
 document.addEventListener('click', (e) => {
     if (e.target && e.target.innerText && e.target.innerText.includes('GRAVAR E IMPRIMIR')) {
-        setTimeout(window.sincronizarSilencioso, 2000);
+        setTimeout(async () => { await window.dbSincronizarTudoLocalParaNuvem(); }, 3000);
     }
 });
 
@@ -345,7 +358,6 @@ setTimeout(window.inicializarNuvem, 1000);
     </style>
 </head>
 <body>
-<div style="background: #14b8a6; color: white; text-align: center; padding: 12px; font-weight: bold; font-size: 16px; z-index: 999999;">🚀 ATERPA USINA v6.0 - NUVEM COMPLETA</div>
 
     <!-- Sidebar -->
     <aside class="sidebar">
@@ -362,13 +374,13 @@ setTimeout(window.inicializarNuvem, 1000);
             <li><a href="#" onclick="mudarAba('relatorios', this)">Relatórios de Consumo</a></li>
             <li><a href="#" onclick="mudarAba('resumo', this)">📅 Resumo Diário</a></li>
             <li><a href="#" onclick="mudarAba('segunda-via', this)">🖨️ Segunda Via</a></li>
-            <li style="margin-top: 25px; border-top: 2px solid rgba(255,255,255,0.1); padding-top: 15px;">
-                <a href="javascript:void(0)" onclick="window.abrirConfigCloud()" style="color: #fbbf24; text-decoration: none; font-weight: bold;">☁️ PAINEL DA NUVEM</a>
+            <li style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                <a href="javascript:void(0)" onclick="window.abrirConfigCloud()" style="color: #14b8a6; text-decoration: none; font-size: 13px;">☁️ Configurar Nuvem</a>
+            </li>
+            <li style="padding: 10px 0;">
+                <div id="cloud-badge" style="padding: 4px 10px; border-radius: 4px; font-size: 10px; font-weight: bold; width: fit-content; background: #334155; color: #94a3b8;">● Conectando...</div>
             </li>
         </ul>
-        <div style="padding: 15px;">
-            <div id="cloud-badge" style="padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 6px; width: fit-content; background: #fee2e2; color: #991b1b;">● Nuvem Offline</div>
-        </div>
     </aside>
 
     <!-- Aba Segunda Via -->
@@ -3250,28 +3262,17 @@ setTimeout(window.inicializarNuvem, 1000);
 </script>
 
 
-    <!-- MODAL DA NUVEM -->
     <div id="cloud-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000000; justify-content:center; align-items:center; font-family: sans-serif;">
-        <div style="background:white; padding:30px; border-radius:15px; width:450px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.5); text-align:center;">
-            <h2 style="margin-top:0; color:#1e293b;">Painel da Nuvem</h2>
+        <div style="background:white; padding:30px; border-radius:15px; width:450px; max-width:90%; box-shadow:0 10px 25px rgba(0,0,0,0.5); text-align:center; color: #1e293b;">
+            <h2 style="margin-top:0;">Painel da Nuvem</h2>
             <div id="cloud-status-text" style="font-size:20px; font-weight:bold; margin:20px 0;">● Conectando...</div>
             
-            <div id="cloud-error-msg" style="background:#fee2e2; color:#991b1b; padding:10px; border-radius:8px; margin-bottom:15px; display:none; font-size:14px;"></div>
-
-            <div style="background:#f1f5f9; padding:15px; border-radius:10px; text-align:left; font-size:13px; margin-bottom:20px;">
-                <strong>Diagnóstico Técnico:</strong><br>
-                URL: <span id="cloud-debug-url">---</span><br>
-                Key: <span id="cloud-debug-key">---</span><br>
-                Lib: <span id="cloud-debug-lib">---</span><br>
-                Conexão: <span id="cloud-debug-conn">---</span>
+            <div style="background:#f1f5f9; padding:15px; border-radius:10px; text-align:left; font-size:12px; margin-bottom:20px;">
+                <strong>Diagnóstico:</strong> URL: <span id="cloud-debug-url">---</span> | Lib: <span id="cloud-debug-lib">---</span>
             </div>
 
-            <div style="background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:20px;">
-                <p style="font-size:13px; color:#64748b; margin-top:0;">Clique abaixo para sincronizar seus dados locais com a nuvem.</p>
-                <button onclick="window.realizarSincronizacao()" class="btn-sync" style="background:#3b82f6; color:white; border:none; padding:12px 25px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; font-size:16px;">Sincronizar Agora</button>
-            </div>
-
-            <button onclick="window.fecharConfigCloud()" style="background:white; border:1px solid #cbd5e1; color:#64748b; padding:10px 20px; border-radius:8px; cursor:pointer; width:100%;">Fechar</button>
+            <button onclick="window.realizarSincronizacao()" class="btn-sync" style="background:#14b8a6; color:white; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:10px;">Sincronizar Manualmente</button>
+            <button onclick="window.fecharConfigCloud()" style="background:white; border:1px solid #cbd5e1; color:#64748b; padding:10px; border-radius:8px; cursor:pointer; width:100%;">Fechar</button>
         </div>
     </div>
     
