@@ -68,9 +68,9 @@ let MAT_DB = MATERIAIS_DEFAULT;
 let SILOS_DB = { "Silo 1": 0, "Silo 2": 0 };
 
 let estado = {
-    tracoSelecionado: "",
-    motoristaSelecionadoObj: { matricula: "", nome: "" },
-    placaSelecionadaObj: { al: "", placa: "" },
+    tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
+    motoristaSelecionadoObj: { matricula: "60580", nome: "LUAN JONAS DAVI" },
+    placaSelecionadaObj: { al: "AL-7312", placa: "TGK8G25" },
     senhaLiberada: false
 };
 
@@ -87,31 +87,46 @@ window.onload = async function() {
     // Event Listeners
     document.getElementById('inputVolume').addEventListener('input', recalcular);
     document.getElementById('inputAguaUsina').addEventListener('input', recalcular);
-    
-    popularBarraMateriais();
-    popularTracos();
-    popularFrota();
-    popularCamposUmidade();
-    recalcular();
 };
 
 async function carregarDadosIniciais() {
-    TRACOS_DB = await window.dbCarregarConfig('tracos', TRACOS_DEFAULT);
-    FROTA_DB = await window.dbCarregarConfig('frota', FROTA_DEFAULT);
-    MOTORISTAS_DB = await window.dbCarregarConfig('motoristas', MOTORISTAS_DEFAULT);
-    MAT_DB = await window.dbCarregarConfig('materiais', MATERIAIS_DEFAULT);
-    SILOS_DB = await window.dbCarregarConfig('silos', { "Silo 1": 0, "Silo 2": 0 });
-    
-    // Auto-puxar NF do histórico cloud
     try {
+        // Carrega do banco ou usa o padrão
+        TRACOS_DB = await window.dbCarregarConfig('tracos', TRACOS_DEFAULT);
+        FROTA_DB = await window.dbCarregarConfig('frota', FROTA_DEFAULT);
+        MOTORISTAS_DB = await window.dbCarregarConfig('motoristas', MOTORISTAS_DEFAULT);
+        MAT_DB = await window.dbCarregarConfig('materiais', MATERIAIS_DEFAULT);
+        SILOS_DB = await window.dbCarregarConfig('silos', { "Silo 1": 0, "Silo 2": 0 });
+
+        // Se o banco estava vazio, salva os padrões lá para sincronizar a nuvem
+        const isNewCloud = (await window.dbListarNotas()).length === 0;
+        if (isNewCloud) {
+            await window.dbSalvarConfig('tracos', TRACOS_DB);
+            await window.dbSalvarConfig('frota', FROTA_DB);
+            await window.dbSalvarConfig('motoristas', MOTORISTAS_DB);
+            await window.dbSalvarConfig('materiais', MAT_DB);
+            await window.dbSalvarConfig('silos', SILOS_DB);
+        }
+
+        // Auto-puxar NF do histórico cloud
         const hist = await window.dbListarNotas();
         if (hist.length > 0) {
             let maxNF = Math.max(...hist.map(h => parseInt(h.nf) || 0));
             document.getElementById('inputNF').value = maxNF + 1;
+        } else {
+            document.getElementById('inputNF').value = 1000; // Começa de um numero alto se novo
         }
-    } catch(e) {}
+    } catch(e) {
+        console.error("Erro no carregamento cloud:", e);
+    }
     
+    // Atualiza a tela independente de onde vieram os dados
+    popularBarraMateriais();
+    popularTracos();
+    popularFrota();
+    popularCamposUmidade();
     atualizarSilosUI();
+    recalcular();
 }
 
 // --- LÓGICA DE UI E NAVEGAÇÃO ---
@@ -131,7 +146,6 @@ window.mudarAba = async function(abaId, el) {
         el.classList.add('active');
     }
 
-    // Gatilhos de carregamento de aba
     if (abaId === 'historico') carregarHistorico();
     if (abaId === 'resumo') carregarResumoDiario();
 };
@@ -190,7 +204,6 @@ window.imprimirNota = async function() {
     try {
         await window.dbSalvarNota(nota);
         
-        // Abate estoque
         const cimentoConsumo = (TRACOS_DB[nota.traco].cimento || 0) * nota.volume;
         SILOS_DB[nota.silo] -= cimentoConsumo;
         await window.dbAtualizarSilos(SILOS_DB);
@@ -205,7 +218,16 @@ window.imprimirNota = async function() {
     }
 };
 
-// --- AUXILIARES ---
+// --- POPULADORES ---
+
+function popularBarraMateriais() {
+    const head = document.getElementById('header-barra-materiais');
+    const body = document.getElementById('body-barra-materiais');
+    if(!head || !body) return;
+    
+    head.innerHTML = '<tr>' + MAT_DB.map(m => `<th>${m.label}</th>`).join('') + '<th>ÁGUA USINA</th></tr>';
+    body.innerHTML = '<tr>' + MAT_DB.map(m => `<td id="top${m.id.charAt(0).toUpperCase()}${m.id.slice(1)}">0,0</td>`).join('') + '<td id="topAgua">0,0</td></tr>';
+}
 
 function popularTracos() {
     const list = document.getElementById('listaTracos');
@@ -236,9 +258,11 @@ function popularFrota() {
     Object.keys(MOTORISTAS_DB).forEach(mat => {
         let li = document.createElement('li');
         li.innerText = MOTORISTAS_DB[mat].nome;
+        if (mat === estado.motoristaSelecionadoObj.matricula) li.classList.add('selected');
         li.onclick = () => {
             estado.motoristaSelecionadoObj = { matricula: mat, nome: MOTORISTAS_DB[mat].nome };
             document.getElementById('inputMotoristaDisplay').value = MOTORISTAS_DB[mat].nome;
+            document.getElementById('inputMotMatriculaDisplay').value = mat;
             document.querySelectorAll('#listaMotoristas li').forEach(e => e.classList.remove('selected'));
             li.classList.add('selected');
         };
@@ -248,6 +272,7 @@ function popularFrota() {
     Object.keys(FROTA_DB).forEach(al => {
         let li = document.createElement('li');
         li.innerText = al;
+        if (al === estado.placaSelecionadaObj.al) li.classList.add('selected');
         li.onclick = () => {
             estado.placaSelecionadaObj = { al: al, placa: FROTA_DB[al].placa };
             document.getElementById('inputPlacaDisplay').value = al;
@@ -259,8 +284,12 @@ function popularFrota() {
     });
 }
 
+function popularCamposUmidade() {
+    // ... logic for umidade manual if needed
+}
+
 function atualizarSilosUI() {
-    const fmt = (v) => (v || 0).toLocaleString('pt-BR');
+    const fmt = (v) => (v || 0).toLocaleString('pt-BR', {minimumFractionDigits: 1});
     if (document.getElementById('visorSilo1')) document.getElementById('visorSilo1').innerHTML = `${fmt(SILOS_DB['Silo 1'])} <span style="font-size:10px;">KG</span>`;
     if (document.getElementById('visorSilo2')) document.getElementById('visorSilo2').innerHTML = `${fmt(SILOS_DB['Silo 2'])} <span style="font-size:10px;">KG</span>`;
 }
@@ -273,7 +302,6 @@ window.abastecerSilo = async function(silo) {
     atualizarSilosUI();
 };
 
-// --- CONFIGURAÇÃO CLOUD ---
 window.abrirConfigCloud = function() {
     const url = prompt("Supabase URL:", localStorage.getItem('SUPABASE_URL') || "");
     const key = prompt("Supabase Anon Key:", localStorage.getItem('SUPABASE_KEY') || "");
@@ -286,5 +314,3 @@ window.pedirSenha = (msg) => new Promise(res => {
     let s = prompt(msg);
     res(s);
 });
-
-// Outras funções de popular... (continuar conforme necessidade)
