@@ -77,6 +77,11 @@ let estado = {
 // --- INICIALIZAÇÃO ---
 
 window.onload = async function() {
+    // Tenta conectar ao banco antes de carregar os dados
+    if (window.initDatabase) {
+        await window.initDatabase();
+    }
+    
     await carregarDadosIniciais();
     
     // Configura campos de data/hora

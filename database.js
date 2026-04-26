@@ -1,20 +1,18 @@
 // database.js - Integração com Supabase na Nuvem
 
-// Configuração inicial (As chaves serão preenchidas pelo usuário no painel da Vercel)
-const SUPABASE_URL = window.ENV?.SUPABASE_URL || localStorage.getItem('SUPABASE_URL') || '';
-const SUPABASE_KEY = window.ENV?.SUPABASE_KEY || localStorage.getItem('SUPABASE_KEY') || '';
+// Configuração oficial do projeto ATERPA Usina
+const SUPABASE_URL = 'https://ttcycjnlzchagnneqpym.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_fbDsAd9r_ordMh0-lGycWw_IPRQykl5';
 
 let supabase = null;
 
-if (SUPABASE_URL && SUPABASE_KEY) {
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-}
-
-// Inicialização segura
-window.initDatabase = async function(url, key) {
-    localStorage.setItem('SUPABASE_URL', url);
-    localStorage.setItem('SUPABASE_KEY', key);
-    supabase = window.supabase.createClient(url, key);
+// Inicialização segura que pode ser chamada externamente
+window.initDatabase = async function() {
+    if (typeof window.supabase !== 'undefined' && SUPABASE_URL && SUPABASE_KEY) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } else {
+        console.warn("Supabase não carregado ou chaves ausentes. Usando armazenamento local.");
+    }
     return supabase;
 };
 
@@ -75,7 +73,7 @@ window.dbCarregarConfig = async function(tipo, valorDefault) {
         .eq('id', tipo)
         .single();
     
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 é "not found"
+    if (error && error.code !== 'PGRST116') throw error; 
     return data ? data.dados : valorDefault;
 };
 
