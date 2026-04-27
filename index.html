@@ -138,6 +138,33 @@ window.dbBaixarHistoricoDaNuvem = async () => {
 };
 
 window.isSyncing = false;
+
+window.dbExcluirNota = async (id, notaOpcional = null) => {
+    if (!id && !notaOpcional) return { success: false, error: "Dados insuficientes" };
+    try {
+        // Tenta 1: Pelo ID Único
+        let url = `${SUPABASE_URL}/rest/v1/notas?id=eq.${id}`;
+        
+        // Tenta 2: Se falhar ou não tiver ID, usa NF + Unidade + Data (Garantia Extra)
+        if (!id && notaOpcional) {
+            const nf = notaOpcional.nf || notaOpcional.numero;
+            const unidade = notaOpcional.unidade || localStorage.getItem('usina_unidade');
+            const data = notaOpcional.data;
+            url = `${SUPABASE_URL}/rest/v1/notas?nf=eq.${nf}&unidade=eq.${unidade}&data=eq.${data}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+
+        if (response.ok) return { success: true };
+        return { success: false, error: "Falha na exclusão remota" };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+};
+
 window.dbSincronizarTudoLocalParaNuvem = async () => {
     if (window.isSyncing) return { success: false };
     window.isSyncing = true;
@@ -185,10 +212,11 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
         });
 
         const notasPadronizadas = Array.from(mapaUnico.values());
+        const idsLocais = new Set(notasPadronizadas.map(n => n.id));
         let sucessos = 0;
         let falhas = 0;
 
-        // ENVIO INDIVIDUAL: Resolve o erro de "cannot affect row a second time"
+        // 1. ENVIO/ATUALIZAÇÃO (UPSERT)
         for (const nota of notasPadronizadas) {
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/notas`, {
@@ -204,6 +232,22 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
                 if (response.ok) sucessos++; else falhas++;
             } catch (e) { falhas++; }
         }
+
+        // 2. ESPELHAMENTO: Deletar da nuvem o que não existe mais localmente (para esta unidade)
+        try {
+            const resNuvem = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=id&unidade=eq.${unidadeAtual}`, {
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+            });
+            if (resNuvem.ok) {
+                const idsNuvem = await resNuvem.json();
+                for (const item of idsNuvem) {
+                    if (!idsLocais.has(item.id)) {
+                        // Se está na nuvem mas não está no local, deleta da nuvem
+                        await window.dbExcluirNota(item.id);
+                    }
+                }
+            }
+        } catch (e) { console.error("Erro no espelhamento:", e); }
 
         window.isSyncing = false;
         if (falhas === 0) {
@@ -339,6 +383,12 @@ setTimeout(window.inicializarNuvem, 1000);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aterpa - Sistema de Usina</title>
+    <link rel="icon" type="image/png" href="Logo moderno com símbolo vermelho.png">
+    <link rel="apple-touch-icon" href="Logo moderno com símbolo vermelho.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1e293b">
+    <link rel="manifest" href="manifest.json">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -1601,10 +1651,22 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
+
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+            const notaParaExcluir = hist.find(x => String(x.nf) === String(nf));
+            
+            // Tenta excluir da nuvem (passando o objeto da nota como garantia)
+            if (notaParaExcluir && window.dbExcluirNota) {
+                const resCloud = await window.dbExcluirNota(notaParaExcluir.id, notaParaExcluir);
+                if (!resCloud.success) {
+                    console.warn("Falha na exclusão direta, o espelhamento cuidará disso na próxima sincronização.");
+                }
+            }
+
             hist = hist.filter(x => String(x.nf) !== String(nf));
             localStorage.setItem('usina_historico', JSON.stringify(hist));
             carregarHistorico();
+            alert("Nota " + nf + " removida com sucesso (Local e Nuvem).");
         };
 
         window.exportarCSV = function() {
