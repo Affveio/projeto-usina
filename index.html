@@ -262,6 +262,46 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
         return { success: false, error: e.message }; 
     }
 };
+
+window.dbAtualizarEstoqueSilos = async () => {
+    const silos = JSON.parse(localStorage.getItem('usina_silos_db') || '{"Silo 1": 0, "Silo 2": 0}');
+    const unidade = localStorage.getItem('usina_unidade') || 'USINA-PADRAO';
+    try {
+        await fetch(`${SUPABASE_URL}/rest/v1/estoque`, {
+            method: 'POST',
+            headers: { 
+                'apikey': SUPABASE_KEY, 
+                'Authorization': `Bearer ${SUPABASE_KEY}`, 
+                'Content-Type': 'application/json', 
+                'Prefer': 'resolution=merge-duplicates' 
+            },
+            body: JSON.stringify({
+                unidade: unidade,
+                silo1: silos['Silo 1'],
+                silo2: silos['Silo 2'],
+                atualizado_em: new Date().toISOString()
+            })
+        });
+    } catch (e) { console.error("Erro ao sincronizar silos:", e); }
+};
+
+window.dbBaixarEstoqueSilos = async () => {
+    const unidade = localStorage.getItem('usina_unidade') || 'USINA-PADRAO';
+    try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/estoque?unidade=eq.${unidade}&select=*`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        if (response.ok) {
+            const dados = await response.json();
+            if (dados && dados.length > 0) {
+                const cloudSilos = { "Silo 1": dados[0].silo1, "Silo 2": dados[0].silo2 };
+                localStorage.setItem('usina_silos_db', JSON.stringify(cloudSilos));
+                return cloudSilos;
+            }
+        }
+    } catch (e) { console.error("Erro ao baixar silos:", e); }
+    return null;
+};
 </script>
 <script>// cloud_v2.js - VERSÃO MULTI-USINAS + BACKUP
 window.abrirConfigCloud = async () => {
@@ -3499,6 +3539,9 @@ setTimeout(window.inicializarNuvem, 1000);
         if(document.getElementById('visorSilo1')) document.getElementById('visorSilo1').innerHTML = fmt(window.usina_silos_db['Silo 1'] || 0) + ' <span style="font-size: 11px; color: #94a3b8;">KG</span>';
         if(document.getElementById('visorSilo2')) document.getElementById('visorSilo2').innerHTML = fmt(window.usina_silos_db['Silo 2'] || 0) + ' <span style="font-size: 11px; color: #94a3b8;">KG</span>';
         localStorage.setItem('usina_silos_db', JSON.stringify(window.usina_silos_db));
+        
+        // Sincroniza com a nuvem (Supabase)
+        if (window.dbAtualizarEstoqueSilos) window.dbAtualizarEstoqueSilos();
     };
 
     window.abastecerSilo = function(silo) {
@@ -3513,7 +3556,12 @@ setTimeout(window.inicializarNuvem, 1000);
     };
 
     // Auto-carregar UI do Silo no inicio
-    document.addEventListener("DOMContentLoaded", function() {
+    document.addEventListener("DOMContentLoaded", async function() {
+        // Tenta baixar da nuvem primeiro para espelhar
+        if (window.dbBaixarEstoqueSilos) {
+            const cloudData = await window.dbBaixarEstoqueSilos();
+            if (cloudData) window.usina_silos_db = cloudData;
+        }
         atualizarSilosUI();
         
         // Auto-sugestão da próxima NF baseada no histórico
