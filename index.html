@@ -118,23 +118,59 @@ const gerarIDNota = (n) => {
 window.dbBaixarHistoricoDaNuvem = async () => {
     if (window.isSyncing) return { success: false };
     try {
-        const resNotas = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=100`, {
+        // Aumentamos o limite para 150 para garantir uma janela de consistência maior
+        const resNotas = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=150`, {
             headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         });
         if (resNotas.ok) {
             const notasNuvem = await resNotas.json();
-            const notasLocais = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            const mapa = {};
-            notasLocais.forEach(n => { 
-                const id = n.id && n.id.length > 30 ? n.id : gerarIDNota(n); 
-                n.id = id; 
-                mapa[id] = n; 
+            let notasLocais = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+            
+            // Garantir que todas as notas locais tenham ID e Mapear para busca rápida
+            const mapaFinal = {};
+            notasLocais.forEach(n => {
+                const id = n.id && n.id.length > 30 ? n.id : gerarIDNota(n);
+                n.id = id;
+                mapaFinal[id] = n;
             });
-            notasNuvem.forEach(n => { if (!mapa[n.id]) mapa[n.id] = n; });
-            localStorage.setItem('usina_historico', JSON.stringify(Object.values(mapa)));
+
+            const idsNuvem = new Set(notasNuvem.map(n => n.id));
+            
+            // Determinamos a "janela de tempo" que trouxemos da nuvem
+            // Se trouxemos notas, qualquer nota local que tenha timestamp maior que a mais antiga da nuvem
+            // DEVERIA estar no pacote. Se não estiver, é porque foi deletada na nuvem.
+            const minTimestampNuvem = notasNuvem.length > 0 
+                ? Math.min(...notasNuvem.map(n => n.timestamp || 0)) 
+                : 0;
+
+            // 1. Filtragem de Exclusões (Mirroring Reverso)
+            // Removemos do mapa local as notas que deveriam estar na nuvem mas não estão
+            Object.keys(mapaFinal).forEach(id => {
+                const local = mapaFinal[id];
+                // Se a nota local é RECENTE (dentro da janela da nuvem) mas NÃO veio no pacote da nuvem
+                if (local.timestamp >= minTimestampNuvem && !idsNuvem.has(id)) {
+                    delete mapaFinal[id]; // Foi deletada na nuvem, deletamos no local
+                }
+            });
+
+            // 2. Adicionamos/Sobrescrevemos com as notas que vieram da nuvem (Verdade Absoluta)
+            notasNuvem.forEach(n => {
+                mapaFinal[n.id] = n;
+            });
+
+            const historicoFinal = Object.values(mapaFinal).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            localStorage.setItem('usina_historico', JSON.stringify(historicoFinal));
+
+            // CRÍTICO: Atualizar a interface se a função estiver disponível
+            if (window.carregarHistorico) {
+                window.carregarHistorico();
+            }
         }
         return { success: true };
-    } catch (e) { return { success: false }; }
+    } catch (e) { 
+        console.error("Erro ao baixar histórico:", e);
+        return { success: false }; 
+    }
 };
 
 window.isSyncing = false;
@@ -508,7 +544,7 @@ setTimeout(window.inicializarNuvem, 1000);
         #print-section { display: none; }
         @media print {
             body { background: #fff !important; padding: 0 !important; display: block !important; overflow: visible !important; height: auto !important; }
-            .sidebar, .header, .materials-banner, .dashboard-container, .main-content:not(#aba-nota-preview) { display: none !important; }
+            .sidebar, .header, .materials-banner, .dashboard-container, .main-content { display: none !important; }
             #print-section { display: block !important; }
         }
 
@@ -552,14 +588,14 @@ setTimeout(window.inicializarNuvem, 1000);
                 margin: 0;
                 padding: 0;
             }
-            html, body { min-height: 297mm; height: 297mm; }
+            html, body { min-height: auto; height: auto; }
             body { background: #fff !important; margin: 0; padding: 0; display: block !important; }
             #print-section { display: block !important; position: static; }
             .print-note-layout .page {
                 position: static;
                 display: flex;
                 flex-direction: column;
-                justify-content: space-between;
+                justify-content: flex-start;
                 box-shadow: none;
                 border: none;
                 padding: 4mm;
@@ -668,7 +704,7 @@ setTimeout(window.inicializarNuvem, 1000);
     <!-- Main -->
     
     <main id="aba-nota-preview" class="main-content" style="display: none; padding: 20px; background: #94a3b8; overflow-y: auto; align-items: center; flex-direction: column;">
-        <div style="background: white; width: 210mm; min-height: 297mm; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border-radius: 4px; box-sizing: border-box; position: relative;">
+        <div style="background: white; width: 210mm; border-radius: 4px; box-sizing: border-box; position: relative;">
             <!-- O conteúdo da nota será injetado aqui via JS -->
             
             <!-- O conteúdo da nota será injetado aqui via JS para evitar duplicidade de HTML -->
@@ -2459,101 +2495,131 @@ setTimeout(window.inicializarNuvem, 1000);
         }
 
         window.buscarSegundaVia = function() {
-            const nfBusca = document.getElementById('inputBuscaNF').value.trim();
-            const msg = document.getElementById('msgBuscaNF');
-            const btnImpr = document.getElementById('btnImprimirSegundaVia');
-            const container = document.getElementById('container-segunda-via');
-            
-            msg.textContent = '';
-            btnImpr.style.display = 'none';
-            container.style.display = 'none';
-
-            if (!nfBusca) { msg.textContent = '⚠️ Digite o número da nota.'; return; }
-
-            const hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            const nota = hist.find(n => String(n.nf) === nfBusca);
-
-            if (!nota) {
-                msg.textContent = `❌ Nota Nº ${nfBusca} não encontrada no histórico.`;
-                return;
-            }
-
-            const traco = TRACOS_DB[nota.traco] || {};
-            const volume = parseFloat(nota.volume) || 1;
-
-            let htmlMat = '';
-            
-            // Linha de Água e Água Retida (Dinamico)
-            htmlMat += `<div style="display:flex;align-items:center;width:100%;margin-bottom:2px;font-size:11px;">
-                            <div style="display:flex;align-items:center;width:350px;border-bottom:1px dotted #eee;">
-                                <span style="width:220px;font-weight:normal;">ÁGUA:</span>
-                                <span style="width:130px;font-family:monospace;font-size:13px;text-align:right;">${Math.round(nota.agua_usina || 0)} LTS</span>
-                            </div>
-                            <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;border-bottom:1px dotted #eee;margin-left:20px;font-size:11px;">
-                                <span style="margin-right:15px;">AGUA RETIDA (UMIDADE):</span>
-                                <span style="font-family:monospace;font-size:13px;width:100px;text-align:right;">${parseFloat((nota.agua_retida || 0).toFixed(2)).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} LTS</span>
-                            </div>
-                        </div>`;
-
-            // Linha de Gelo (Especial - Logo abaixo da Água na Segunda Via)
-            const valGeloNota = parseFloat(nota.gelo || 0);
-            if (valGeloNota > 0) {
-                htmlMat += `<div style="display:flex;align-items:center;width:350px;margin-bottom:2px;font-size:11px;border-bottom:1px dotted #eee;">
-                                <span style="width:220px;font-weight:normal;">GELO:</span>
-                                <span style="width:130px;font-family:monospace;font-size:13px;text-align:right;">${valGeloNota.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} LTS</span>
-                            </div>`;
-            }
-
-
-            // Materiais Dinâmicos (Pula Água e Gelo)
-            MAT_DB.forEach(mat => {
-                if(mat.id === 'water' || mat.id === 'agua' || mat.id === 'gelo') return;
-                const val = (nota.materiais ? nota.materiais[mat.id] : nota[mat.id]) || 0;
-                if (val > 0) {
-                    htmlMat += `<div style="display:flex;align-items:center;width:350px;margin-bottom:2px;font-size:11px;border-bottom:1px dotted #eee;">
-                                    <span style="width:220px;font-weight:normal;">${mat.label.toUpperCase()}:</span>
-                                    <span style="width:130px;font-family:monospace;font-size:13px;text-align:right;">${parseFloat(val.toFixed(2)).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${mat.unit}</span>
-                                </div>`;
+            try {
+                const nfBusca = document.getElementById('inputBuscaNF').value.trim();
+                const msg = document.getElementById('msgBuscaNF');
+                const btnImpr = document.getElementById('btnImprimirSegundaVia');
+                const container = document.getElementById('container-segunda-via');
+                
+                if (!msg || !btnImpr || !container) {
+                    console.error("Elementos da UI de Segunda Via não encontrados!");
+                    return;
                 }
-            });
 
-            const printSection = document.getElementById('print-section');
-            const preview = document.getElementById('preview-segunda-via');
-            if (!printSection || !preview) return;
+                msg.textContent = '';
+                btnImpr.style.display = 'none';
+                container.style.display = 'none';
 
-            preview.innerHTML = printSection.innerHTML;
+                if (!nfBusca) { 
+                    msg.textContent = '⚠️ Digite o número da nota.'; 
+                    return; 
+                }
 
-            const sp = (id, val) => { let el = preview.querySelector('#' + id); if(el) el.innerText = val; };
+                const hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+                const nota = hist.find(n => String(n.nf) === nfBusca);
 
-            sp('p_nf', nota.nf);
-            sp('p_nf2', nota.nf);
-            sp('p_data', nota.data);
-            sp('p_hora_mistura', nota.hora_mistura || '');
-            sp('p_hora_saida', nota.hora_saida || '');
-            sp('p_al', nota.al);
-            sp('p_placa', nota.placa);
-            sp('p_motorista', nota.motorista);
-            sp('p_mat_motorista', nota.matricula);
-            sp('p_local', nota.frente);
-            sp('p_traco', nota.traco);
-            sp('p_volume', nota.volume);
-            sp('p_slump', traco.slump_ini && traco.slump_fim ? `${traco.slump_ini} A ${traco.slump_fim}` : '');
-            sp('p_fck', traco.fck ? `${traco.fck} MPA` : '');
-            sp('p_dmc', '19 MM');
-            sp('p_classe', traco.classe || '');
-            sp('p_silo', nota.silo || '');
-            sp('p_agua_colocar', Math.round(nota.agua_obra || 0));
-            sp('p_agua_colocada', '');
-            sp('p_agua_colocada_usina_placeholder', Math.round((nota.agua_usina || 0) + (nota.gelo || 0)));
-            sp('p_data_recebimento', '');
+                if (!nota) {
+                    msg.textContent = `❌ Nota Nº ${nfBusca} não encontrada no histórico.`;
+                    return;
+                }
 
-            const elMat = preview.querySelector('#p_materiais');
-            if (elMat) elMat.innerHTML = htmlMat;
+                const traco = TRACOS_DB[nota.traco] || {};
+                const volume = parseFloat(nota.volume) || 1;
 
-            container.style.display = 'flex';
-            btnImpr.style.display = 'inline-flex';
-            msg.textContent = `✅ Nota Nº ${nfBusca} encontrada – ${nota.motorista} | ${nota.data}`;
-            msg.style.color = '#10b981';
+                let materialRows = [];
+                
+                // 1ª Linha: Água e Água Retida (Fixo no topo)
+                const waterRow = `<div style="display: flex; align-items: center; width: 100%; margin-bottom: 0px; font-size: 11px; line-height: 1.4;">
+                                <div style="display: flex; align-items: center; width: 350px; border-bottom: 1px dotted #eee;">
+                                    <span style="width: 220px; font-weight: normal;">ÁGUA:</span>
+                                    <span style="width: 130px; font-family: monospace; font-size: 13px; text-align: right;">${Math.round(nota.agua_usina || 0).toLocaleString('pt-BR')} LTS</span>
+                                </div>
+                                <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; border-bottom: 1px dotted #eee; margin-left: 20px;">
+                                    <span style="margin-right: 15px;">AGUA RETIDA (UMIDADE):</span>
+                                    <span style="font-family: monospace; font-size: 13px; width: 100px; text-align: right;">${parseFloat((nota.agua_retida || 0).toFixed(2)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LTS</span>
+                                </div>
+                              </div>`;
+
+                // Linha de Gelo (Especial)
+                const valGeloNota = parseFloat(nota.gelo || 0);
+                if (valGeloNota > 0) {
+                    materialRows.push(`<div style="display: flex; align-items: center; width: 350px; margin-bottom: 0px; font-size: 11px; line-height: 1.4; border-bottom: 1px dotted #eee;">
+                                    <span style="width: 220px; font-weight: normal;">GELO:</span>
+                                    <span style="width: 130px; font-family: monospace; font-size: 13px; text-align: right;">${valGeloNota.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} LTS</span>
+                                </div>`);
+                }
+
+                // Materiais Dinâmicos (Pula Água e Gelo)
+                MAT_DB.forEach(mat => {
+                    if(mat.id === 'water' || mat.id === 'agua' || mat.id === 'gelo') return;
+                    const val = (nota.materiais ? nota.materiais[mat.id] : nota[mat.id]) || 0;
+                    if (val > 0) {
+                        materialRows.push(`<div style="display: flex; align-items: center; width: 350px; margin-bottom: 0px; font-size: 11px; line-height: 1.4; border-bottom: 1px dotted #eee;">
+                                        <span style="width: 220px; font-weight: normal;">${mat.label.toUpperCase()}:</span>
+                                        <span style="width: 130px; font-family: monospace; font-size: 13px; text-align: right;">${parseFloat(val.toFixed(2)).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${mat.unit}</span>
+                                    </div>`);
+                    }
+                });
+
+                const col2Items = materialRows.slice(8);
+                const fillersCount = Math.max(0, 8 - col2Items.length);
+                let fillersHtml = '';
+                for(let i=0; i<fillersCount; i++) {
+                    fillersHtml += '<div style="height: 15.4px; margin-bottom: 0px;"></div>';
+                }
+
+                let htmlMat = waterRow;
+                htmlMat += `<div style="display: flex; width: 100%;">
+                                <div style="display: flex; flex-direction: column;">
+                                    ${materialRows.slice(0, 8).join('')}
+                                </div>
+                                <div style="display: flex; flex-direction: column; margin-left: 20px; flex: 1;">
+                                    ${fillersHtml}
+                                    ${col2Items.join('')}
+                                </div>
+                              </div>`;
+
+                const printSection = document.getElementById('print-section');
+                const preview = document.getElementById('preview-segunda-via');
+                if (!printSection || !preview) return;
+
+                preview.innerHTML = printSection.innerHTML;
+
+                const sp = (id, val) => { let el = preview.querySelector('#' + id); if(el) el.innerText = val; };
+
+                sp('p_nf', nota.nf);
+                sp('p_nf2', nota.nf);
+                sp('p_data', nota.data);
+                sp('p_hora_mistura', nota.hora_mistura || '');
+                sp('p_hora_saida', nota.hora_saida || '');
+                sp('p_al', nota.al);
+                sp('p_placa', nota.placa);
+                sp('p_motorista', nota.motorista);
+                sp('p_remotorista', nota.matricula);
+                sp('p_local', nota.frente);
+                sp('p_traco', nota.traco);
+                sp('p_volume', nota.volume);
+                sp('p_slump', traco.slump_ini && traco.slump_fim ? `${traco.slump_ini} A ${traco.slump_fim}` : '');
+                sp('p_fck', traco.fck ? `${traco.fck} MPA` : '');
+                sp('p_dmc', '19 MM');
+                sp('p_classe', traco.classe || '');
+                sp('p_silo', nota.silo || '');
+                sp('p_agua_colocar', Math.round(nota.agua_obra || 0));
+                sp('p_agua_colocada', '');
+                sp('p_agua_colocada_usina_placeholder', Math.round((nota.agua_usina || 0) + (nota.gelo || 0)));
+                sp('p_data_recebimento', '');
+
+                const elMat = preview.querySelector('#p_materiais');
+                if (elMat) elMat.innerHTML = htmlMat;
+
+                container.style.display = 'flex';
+                btnImpr.style.display = 'inline-flex';
+                msg.textContent = `✅ Nota Nº ${nfBusca} encontrada – ${nota.motorista} | ${nota.data}`;
+                msg.style.color = '#10b981';
+            } catch (err) {
+                console.error("Erro em buscarSegundaVia:", err);
+                alert("Ocorreu um erro ao buscar a nota: " + err.message);
+            }
         };
 
         window.imprimirSegundaVia = function() {
@@ -2703,7 +2769,7 @@ setTimeout(window.inicializarNuvem, 1000);
                 const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
                 const f = (val) => (parseFloat(val || 0) * volume).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-                let htmlMateriais = "";
+                let materialRows = [];
                 const aguaReal = parseFloat(document.getElementById('inputAguaUsina') ? document.getElementById('inputAguaUsina').value : 0) || 0;
                 let aguaRetidaTotal = 0;
                 
@@ -2714,8 +2780,8 @@ setTimeout(window.inicializarNuvem, 1000);
                     }
                 });
 
-                // Linha de Água (Especial)
-                htmlMateriais += `<div style="display: flex; align-items: center; width: 100%; margin-bottom: 2px; font-size: 11px; line-height: 1.1;">
+                // 1ª Linha: Água e Água Retida (Fixo no topo)
+                const waterRow = `<div style="display: flex; align-items: center; width: 100%; margin-bottom: 0px; font-size: 11px; line-height: 1.4;">
                                     <div style="display: flex; align-items: center; width: 350px; border-bottom: 1px dotted #eee;">
                                         <span style="width: 220px; font-weight: normal;">ÁGUA:</span>
                                         <span style="width: 130px; font-family: monospace; font-size: 13px; text-align: right;">${Math.round(aguaReal).toLocaleString('pt-BR')} LTS</span>
@@ -2726,16 +2792,16 @@ setTimeout(window.inicializarNuvem, 1000);
                                     </div>
                                   </div>`;
 
-                // Linha de Gelo (Especial - Logo abaixo da Água)
+                // Adicionar Gelo às linhas de materiais
                 const valGeloNota = parseFloat(document.getElementById('inputGelo') ? document.getElementById('inputGelo').value : 0) || 0;
                 if (valGeloNota > 0) {
-                    htmlMateriais += `<div style="display: flex; align-items: center; width: 350px; margin-bottom: 2px; font-size: 11px; line-height: 1.1; border-bottom: 1px dotted #eee;">
+                    materialRows.push(`<div style="display: flex; align-items: center; width: 350px; margin-bottom: 0px; font-size: 11px; line-height: 1.4; border-bottom: 1px dotted #eee;">
                                         <span style="width: 220px; font-weight: normal;">GELO:</span>
                                         <span style="width: 130px; font-family: monospace; font-weight: normal; font-size: 13px; text-align: right;">${valGeloNota.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} LTS</span>
-                                    </div>`;
+                                    </div>`);
                 }
 
-                // Outros Materiais Dinâmicos (Pula Água e Gelo que já foram impressos)
+                // Adicionar outros Materiais Dinâmicos
                 MAT_DB.forEach(mat => {
                     if (mat.id === 'water' || mat.id === 'agua' || mat.id === 'gelo') return;
                     
@@ -2748,13 +2814,31 @@ setTimeout(window.inicializarNuvem, 1000);
                     valorTotal = valorTotal * volume;
 
                     if (valorTotal > 0) {
-                        htmlMateriais += `<div style="display: flex; align-items: center; width: 350px; margin-bottom: 0px; font-size: 11px; line-height: 1.1; border-bottom: 1px dotted #eee;">
+                        materialRows.push(`<div style="display: flex; align-items: center; width: 350px; margin-bottom: 0px; font-size: 11px; line-height: 1.4; border-bottom: 1px dotted #eee;">
                                     <span style="width: 220px; font-weight: normal;">${mat.label.toUpperCase()}:</span>
                                     <span style="width: 130px; font-family: monospace; font-weight: normal; font-size: 13px; text-align: right;">${valorTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${mat.unit}</span>
-                                </div>`;
+                                </div>`);
                     }
-
                 });
+
+                // Montagem do HTML com duas colunas para os materiais abaixo da água
+                const col2Items = materialRows.slice(8);
+                const fillersCount = Math.max(0, 8 - col2Items.length);
+                let fillersHtml = '';
+                for(let i=0; i<fillersCount; i++) {
+                    fillersHtml += '<div style="height: 15.4px; margin-bottom: 0px;"></div>';
+                }
+
+                htmlMateriais = waterRow;
+                htmlMateriais += `<div style="display: flex; width: 100%;">
+                                    <div style="display: flex; flex-direction: column;">
+                                        ${materialRows.slice(0, 8).join('')}
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; margin-left: 20px; flex: 1;">
+                                        ${fillersHtml}
+                                        ${col2Items.join('')}
+                                    </div>
+                                  </div>`;
 
                 const section = document.getElementById('print-section');
                 const elMateriais = section ? section.querySelector('#p_materiais') : null;
@@ -3365,7 +3449,7 @@ setTimeout(window.inicializarNuvem, 1000);
                     <th style="width: 11%; border-top: none; border-right: none; padding: 6px 5px;">PREÇO TOTAL</th>
                 </tr>
                 <tr>
-                    <td style="height: 90px; border-left: none; border-bottom: none; vertical-align: top; padding: 6px 5px;"></td>
+                    <td style="height: 60px; border-left: none; border-bottom: none; vertical-align: top; padding: 6px 5px;"></td>
                     <td style="border-bottom: none; vertical-align: top; padding: 6px 5px 6px 8px; text-align: left;" id="p_descricao"></td>
                     <td style="border-bottom: none; vertical-align: top; padding: 6px 5px;">M3</td>
                     <td style="border-bottom: none; vertical-align: top; padding: 6px 5px;" id="p_volume"></td>
@@ -3421,7 +3505,8 @@ setTimeout(window.inicializarNuvem, 1000);
             <div class="row">
                 <div class="col" style="flex: 1;"><div class="label">BETONEIRA</div><div class="value" id="p_betoneira"></div></div>
                 <div class="col" style="flex: 1.2;"><div class="label">PLACA</div><div class="value" id="p_placa"></div></div>
-                <div class="col" style="flex: 2.8;"><div class="label">MOTORISTA</div><div class="value" id="p_motorista"></div></div>
+                <div class="col" style="flex: 1;"><div class="label">RE MOTORISTA</div><div class="value" id="p_remotorista"></div></div>
+                <div class="col" style="flex: 1.8;"><div class="label">MOTORISTA</div><div class="value" id="p_motorista"></div></div>
             </div>
 
             <table style="border: none;">
@@ -3447,7 +3532,7 @@ setTimeout(window.inicializarNuvem, 1000);
         </div>
 
         <!-- MATERIAIS APLICADOS -->
-        <div class="box" style="padding: 4px 6px; min-height: 250px; font-size: 11px;">
+        <div class="box" style="padding: 4px 6px; min-height: 180px; font-size: 11px;">
             <div class="bold" style="margin-bottom: 5px; font-size: 11px;">MATERIAIS APLICADOS</div>
             <div id="p_materiais">
                 <!-- Injetado por JS -->
@@ -3463,14 +3548,14 @@ setTimeout(window.inicializarNuvem, 1000);
                 <span class="bold" style="font-size: 11px;">FOLGA D' ÁGUA PARA USAR NA OBRA:</span>
             </div>
             <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #000;">
-                <tr style="height: 30px;">
-                    <td style="border-right: 1px solid #000; width: 14%;"></td>
-                    <td style="border-right: 1px solid #000; width: 20%; padding: 4px 5px; text-align: center;">
+                <tr style="height: 50px;">
+                    <td style="border-right: 1px solid #000; width: 14%; vertical-align: top;"></td>
+                    <td style="border-right: 1px solid #000; width: 20%; padding: 4px 5px; text-align: center; vertical-align: top;">
                         <div class="label">ÁGUA COLOCADA USINA</div>
                         <div class="value" id="p_agua_colocada_usina_placeholder" style="font-size: 13px; min-height: 18px; margin-top: 2px;"></div>
                     </td>
-                    <td style="border-right: 1px solid #000; width: 33%; padding: 4px 5px; font-size: 9px; line-height: 1.2; vertical-align: middle;">ANTES DE DESCARREGAR CONFIRA O TRAÇO, O VOLUME E LACRE Nº</td>
-                    <td style="padding: 4px 5px; font-size: 9px; line-height: 1.2; vertical-align: middle;">NÃO INCIDÊNCIA DO ICMS, NOS TERMOS DO ART. 465, INCISO II E III, DEC. 331 18/91</td>
+                    <td style="border-right: 1px solid #000; width: 33%; padding: 4px 5px; font-size: 9px; line-height: 1.2; vertical-align: top; text-align: center;">ANTES DE DESCARREGAR CONFIRA O TRAÇO, O VOLUME E LACRE Nº</td>
+                    <td style="padding: 4px 5px; font-size: 9px; line-height: 1.2; vertical-align: top; text-align: center;">NÃO INCIDÊNCIA DO ICMS, NOS TERMOS DO ART. 465, INCISO II E III, DEC. 331 18/91</td>
                 </tr>
                 <tr style="height: 32px;">
                     <td style="border-top: 1px solid #000; border-right: 1px solid #000; padding: 4px 5px; vertical-align: middle;">
@@ -3503,11 +3588,11 @@ setTimeout(window.inicializarNuvem, 1000);
             <div class="bold" style="font-size: 10px;">NÃO É PERMITIDA ADIÇÃO DE ÁGUA APÓS A MISTURA FINAL DO CONCRETO.</div>
         </div>
         
-        <div class="box" style="padding: 4px 8px; min-height: 44px;">
+        <div class="box" style="padding: 4px 8px; padding-bottom: 8px;">
             <div style="font-size: 10px; line-height: 1.3;">
                 AUTORIZO A ADIÇÃO DE <span style="border:1px solid #000; width:55px; height:12px; display:inline-block; vertical-align: middle;"></span> (L) D'ÁGUA, ASSUMINDO TODA RESPONSABILIDADE SOBRE AS CONSEQUÊNCIAS NA RESISTÊNCIA E QUALIDADE DO CONCRETO.
             </div>
-            <div style="margin-top: 14px; font-size: 10px; line-height: 1.3;">
+            <div style="margin-top: 8px; font-size: 10px; line-height: 1.3;">
                 <span class="bold">ASSINATURA RESPONSÁVEL ____________________________________________</span>
             </div>
         </div>
