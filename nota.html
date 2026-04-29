@@ -1314,6 +1314,51 @@ setTimeout(window.inicializarNuvem, 1000);
             "AT-375-CON.35.400.REV.00.2,5H": { cimento: 400, agua: 170, recover: 0, mira410: 2.80, viscocrete: 1.20, areia: 870, brita0: 410, brita1: 580, fck: 35, slump_ini: 100, slump_fim: 160, classe: 'S100' }
         };
 
+        const FROTA_DEFAULT = {
+            "AL-8828": { placa: "TLV-2G93", ativo: true },
+            "AL-8831": { placa: "TLB-7D75", ativo: true },
+            "AL-8835": { placa: "TIP-5A25", ativo: true },
+            "AL-8836": { placa: "TJV-8I29", ativo: true },
+            "AL-7249": { placa: "RVA4F86", ativo: true },
+            "AL-7311": { placa: "TFS1D45", ativo: true },
+            "AL-7148": { placa: "RYP2H94", ativo: true },
+            "AL-7233": { placa: "RYP3G14", ativo: true },
+            "AL-7349": { placa: "TFH5B45", ativo: true },
+            "AL-7312": { placa: "TGK8G25", ativo: true },
+            "AL-9161": { placa: "TFR6E95", ativo: true },
+            "AL-9597": { placa: "TFH5B45", ativo: true }
+        };
+
+        const MOTORISTAS_DEFAULT = {
+            "57888": { nome: "JOSE EDIVALDO CONCEICAO OLIVEIRA", ativo: true },
+            "60045": { nome: "JOSE FELIPE GONÇALO FERREIRA", ativo: true },
+            "60022": { nome: "ARIANOR ALVES", ativo: true },
+            "60121": { nome: "CARLOS EUGENIO VITORINO DE MEDEIROS", ativo: true },
+            "58264": { nome: "DAMIAO LUCIANO DA SILVA", ativo: true },
+            "60580": { nome: "LUAN JONAS DAVI", ativo: true },
+            "58052": { nome: "EDSON LUIZ MIRANDA", ativo: true },
+            "57506": { nome: "WILLIAN ARMANDO MARCANO", ativo: true },
+            "57744": { nome: "FLAVIO DOS SANTOS ESTACIO", ativo: true },
+            "59935": { nome: "JOSE ADIEL DE SOUZA DE BRITO", ativo: true },
+            "60042": { nome: "JOSE SERGIO", ativo: true },
+            "60972": { nome: "MANOEL ALVES DE LIMA", ativo: true },
+            "58372": { nome: "VALDEITON CARVALHO", ativo: true }
+        };
+
+        const MATERIAIS_DEFAULT = [
+            { id: "cimento", label: "Cimento CP II-F 40", unit: "KG", type: "cement" },
+            { id: "areia", label: "Areia Natural", unit: "KG", type: "aggregate" },
+            { id: "agua", label: "Água", unit: "L", type: "water" },
+            { id: "brita0", label: "Brita 0", unit: "KG", type: "aggregate" },
+            { id: "brita1", label: "Brita 1", unit: "KG", type: "aggregate" },
+            { id: "mira410", label: "Mira 410", unit: "KG", type: "additive" },
+            { id: "miraflow", label: "Mira Flow 397", unit: "KG", type: "additive" },
+            { id: "recover", label: "Recover", unit: "KG", type: "additive" },
+            { id: "retard", label: "Retard Centralment 200", unit: "KG", type: "additive" },
+            { id: "viscocrete", label: "Viscocrete 6090", unit: "KG", type: "additive" },
+            { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
+        ];
+
         // VARIÁVEIS DE BANCO DE DATA (GLOBAIS PARA SINCRONIZAÇÃO TOTAL)
         let tracosSalvos = JSON.parse(localStorage.getItem('usina_tracos') || '{}');
         window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : TRACOS_DEFAULT;
