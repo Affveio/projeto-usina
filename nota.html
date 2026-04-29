@@ -2342,7 +2342,15 @@ setTimeout(window.inicializarNuvem, 1000);
                     
                     let htmlMats = '';
                     MAT_DB.forEach(mat => {
-                        htmlMats += `<td>${fmt(trac[mat.id])}</td>`;
+                        // BUSCA O VALOR NA NUVEM, SE ESTIVER ZERADO OU NÃO EXISTIR, BUSCA NO PADRÃO DE FÁBRICA
+                        let valor = trac[mat.id];
+                        if (!valor || valor === 0 || valor === "0") {
+                            const tracoPadrao = TRACOS_DEFAULT[nome];
+                            if (tracoPadrao && tracoPadrao[mat.id]) {
+                                valor = tracoPadrao[mat.id];
+                            }
+                        }
+                        htmlMats += `<td>${fmt(valor)}</td>`;
                     });
                     
                     const uniTraco = trac.unidade || '---';
