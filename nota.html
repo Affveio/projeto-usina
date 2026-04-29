@@ -1334,22 +1334,6 @@ setTimeout(window.inicializarNuvem, 1000);
             "58372": { nome: "VALDEITON CARVALHO", ativo: true }
         };
 
-        const MOTORISTAS_DEFAULT = {
-            "57888": { nome: "JOSE EDIVALDO CONCEICAO OLIVEIRA", ativo: true },
-            "60045": { nome: "JOSE FELIPE GONÇALO FERREIRA", ativo: true },
-            "60022": { nome: "ARIANOR ALVES", ativo: true },
-            "60121": { nome: "CARLOS EUGENIO VITORINO DE MEDEIROS", ativo: true },
-            "58264": { nome: "DAMIAO LUCIANO DA SILVA", ativo: true },
-            "60580": { nome: "LUAN JONAS DAVI", ativo: true },
-            "58052": { nome: "EDSON LUIZ MIRANDA", ativo: true },
-            "57506": { nome: "WILLIAN ARMANDO MARCANO", ativo: true },
-            "57744": { nome: "FLAVIO DOS SANTOS ESTACIO", ativo: true },
-            "59935": { nome: "JOSE ADIEL DE SOUZA DE BRITO", ativo: true },
-            "60042": { nome: "JOSE SERGIO", ativo: true },
-            "60972": { nome: "MANOEL ALVES DE LIMA", ativo: true },
-            "58372": { nome: "VALDEITON CARVALHO", ativo: true }
-        };
-
         let motoristasSalvos = JSON.parse(localStorage.getItem('usina_motoristas') || '{}');
         let MOTORISTAS_DB = (motoristasSalvos && Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
         
