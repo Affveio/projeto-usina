@@ -1361,6 +1361,18 @@ setTimeout(window.inicializarNuvem, 1000);
 
         // VARIÁVEIS DE BANCO DE DATA (GLOBAIS PARA SINCRONIZAÇÃO TOTAL)
         let tracosSalvos = JSON.parse(localStorage.getItem('usina_tracos') || '{}');
+        
+        // SANITIZAÇÃO INICIAL: Garante que os traços locais não estejam zerados
+        if (tracosSalvos && Object.keys(tracosSalvos).length > 0) {
+            Object.keys(tracosSalvos).forEach(nome => {
+                const t = tracosSalvos[nome];
+                const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
+                if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
+                    Object.assign(t, p);
+                }
+            });
+        }
+
         window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : TRACOS_DEFAULT;
 
         let frotaSalva = JSON.parse(localStorage.getItem('usina_frota') || '{}');
