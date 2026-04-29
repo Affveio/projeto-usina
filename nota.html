@@ -426,8 +426,25 @@ window.inicializarNuvem = async () => {
             const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
             // SÓ SOBRESCREVE SE TIVER DADOS REAIS NA NUVEM
             if (dadosNuvem && (Array.isArray(dadosNuvem) ? dadosNuvem.length > 0 : Object.keys(dadosNuvem).length > 0)) {
+                if (config.id === 'tracos') { 
+                    // MESCLAGEM INTELIGENTE: Se o traço na nuvem estiver zerado, pega o peso do padrão de fábrica
+                    Object.keys(dadosNuvem).forEach(nome => {
+                        const tracoNuvem = dadosNuvem[nome];
+                        const tracoPadrao = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
+                        
+                        if (tracoPadrao) {
+                            // Verifica se o cimento está zerado (indicativo de traço sem pesos)
+                            if (!tracoNuvem.cimento || tracoNuvem.cimento === 0 || tracoNuvem.cimento === "0") {
+                                Object.assign(tracoNuvem, tracoPadrao);
+                            }
+                        }
+                    });
+                    TRACOS_DB = dadosNuvem; 
+                    if(window.popularTracos) popularTracos(); 
+                }
+                
                 localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
-                if (config.id === 'tracos') { TRACOS_DB = dadosNuvem; if(window.popularTracos) popularTracos(); }
+                
                 if (config.id === 'frota') { FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                 if (config.id === 'motoristas') { MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                 if (config.id === 'recebimentos_cimento') { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
