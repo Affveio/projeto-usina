@@ -68,7 +68,7 @@ input[readonly] { background-color: #f8f9fa; cursor: not-allowed; }
 @media print {
     body { background: #fff !important; padding: 0 !important; display: block !important; overflow: visible !important; height: auto !important; }
     .sidebar, .header, .materials-banner, .dashboard-container, .main-content:not(#aba-nota-preview) { display: none !important; }
-    #print-section { display: block !important; }
+    #print-section.active { display: block !important; }
 }
 
 /* Estilos universais para a Nota (usados na prévia e na impressão) */
@@ -113,7 +113,7 @@ input[readonly] { background-color: #f8f9fa; cursor: not-allowed; }
     }
     html, body { min-height: 297mm; height: 297mm; }
     body { background: #fff !important; margin: 0; padding: 0; display: block !important; }
-    #print-section { display: block !important; position: static; }
+    #print-section.active { display: block !important; position: static; }
     .print-note-layout .page {
         position: static;
         display: flex;
@@ -139,7 +139,9 @@ input[readonly] { background-color: #f8f9fa; cursor: not-allowed; }
     #print-umidade table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
     #print-umidade th, #print-umidade td { border: 1px solid #000; padding: 4px 6px; font-size: 10px; text-align: center; }
     #print-umidade .header-cell { background-color: #d1d5db !important; -webkit-print-color-adjust: exact; font-weight: bold; text-transform: uppercase; font-size: 9px; }
-    @page { size: A4 portrait; margin: 10mm; }
+    
+    /* Suporte para modo paisagem */
+    body.landscape-print @page { size: A4 landscape; margin: 10mm; }
 }
 
 /* Materials Table (Excel Style) */

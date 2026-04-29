@@ -8,12 +8,10 @@
         let modificado = false;
         
         notas.forEach(n => {
-            // Se tiver água da mistura (ex: 510), usa ela no lugar da água bruta (ex: 606)
             if (n.agua_mistura && n.agua != n.agua_mistura) {
                 n.agua = n.agua_mistura;
                 modificado = true;
             }
-            // Garantir que gelo não seja nulo
             if (n.gelo === undefined) {
                 n.gelo = 0;
                 modificado = true;
@@ -26,29 +24,25 @@
     }
 
     function forcarColunaUsina() {
-        corrigirDadosLocais(); // Corrigir os valores antes de desenhar
+        corrigirDadosLocais();
         const trs = document.querySelectorAll('tr');
         const notas = JSON.parse(localStorage.getItem('usina_historico') || '[]');
         const unidadeGlobal = localStorage.getItem('usina_unidade') || '---';
 
         trs.forEach(tr => {
-            // 1. Cabeçalho USINA
             if ((tr.innerText.includes('DATA') || tr.innerText.includes('Data')) && !tr.querySelector('#header-usina')) {
-                const newTh = document.createElement('th');
-                newTh.id = 'header-usina';
-                newTh.innerText = 'USINA';
-                newTh.style.background = '#14b8a6';
-                newTh.style.color = 'white';
-                tr.appendChild(newTh);
+                const th = document.createElement('th');
+                th.id = 'header-usina';
+                th.innerText = 'USINA';
+                th.style.background = '#14b8a6';
+                th.style.color = 'white';
+                tr.appendChild(th);
             }
-
-            // 2. Linhas de Dados
             if (tr.cells.length >= 10 && !tr.querySelector('th') && !tr.querySelector('.col-usina')) {
-                const newTd = document.createElement('td');
-                newTd.className = 'col-usina';
-                newTd.style.fontWeight = 'bold';
-                newTd.style.color = '#14b8a6';
-                
+                const td = document.createElement('td');
+                td.className = 'col-usina';
+                td.style.fontWeight = 'bold';
+                td.style.color = '#14b8a6';
                 let nf = "";
                 for(let cell of tr.cells) {
                     if(cell.innerText.length > 2 && !cell.innerText.includes('/') && !cell.innerText.includes(':')) {
@@ -57,22 +51,8 @@
                     }
                 }
                 const nota = notas.find(n => (n.nf == nf || n.numero == nf));
-                newTd.innerText = (nota && nota.unidade) ? nota.unidade : unidadeGlobal;
-                tr.appendChild(newTd);
-
-                // CORREÇÃO VISUAL DA ÁGUA NA TABELA
-                if (nota && nota.agua) {
-                    // Tenta achar a célula da água (geralmente a 2ª ou 3ª após a hora)
-                    // No sistema original, a água costuma ter o cabeçalho 'ÁGUA'
-                    // Vamos apenas garantir que se acharmos o valor antigo, trocamos pelo novo
-                    for(let cell of tr.cells) {
-                        if(cell.innerText == '606,0' || cell.innerText == '615,0') {
-                             if(nota.agua != parseFloat(cell.innerText)) {
-                                 cell.innerText = nota.agua.toLocaleString('pt-BR', {minimumFractionDigits: 1});
-                             }
-                        }
-                    }
-                }
+                td.innerText = (nota && nota.unidade) ? nota.unidade : unidadeGlobal;
+                tr.appendChild(td);
             }
         });
     }
@@ -102,15 +82,17 @@ const gerarIDNota = (n) => {
     const nf = (n.nf || '0').toString().padStart(6, '0');
     const data = (n.data || '0').toString().replace(/\D/g, '').padStart(6, '0');
     const hora = (n.hora_mistura || n.hora_saida || '0').toString().replace(/\D/g, '').padStart(6, '0');
-    const unidade = (localStorage.getItem('usina_unidade') || 'G').substring(0,3).toUpperCase().padStart(3, 'X');
+    
+    // PRIORIDADE: Unidade gravada na nota, senão a unidade atual do sistema
+    const unidadeOriginal = n.unidade || localStorage.getItem('usina_unidade') || 'A369';
+    const unidadeSlug = unidadeOriginal.substring(0,3).toUpperCase().padStart(3, 'X');
     
     // Formato UUID: 8-4-4-4-12
-    // Ex: 00002735-2604-2608-3000-UNIDADE00000
     const parte1 = nf.padStart(8, '0');
     const parte2 = data.substring(0, 4);
     const parte3 = data.substring(4, 6) + hora.substring(0, 2);
     const parte4 = hora.substring(2, 6).padStart(4, '0');
-    const parte5 = (unidade + nf + data).substring(0, 12).padStart(12, '0');
+    const parte5 = (unidadeSlug + nf + data).substring(0, 12).padStart(12, '0');
     
     return `${parte1}-${parte2}-${parte3}-${parte4}-${parte5}`.toLowerCase();
 };
@@ -118,53 +100,49 @@ const gerarIDNota = (n) => {
 window.dbBaixarHistoricoDaNuvem = async () => {
     if (window.isSyncing) return { success: false };
     try {
-        // Aumentamos o limite para 150 para garantir uma janela de consistência maior
-        const resNotas = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=150`, {
+        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+        // Baixamos um pouco mais (200) para garantir que pegamos tudo que precisa ser migrado/filtrado
+        let url = `${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=200`;
+        
+        const resNotas = await fetch(url, {
             headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
         });
+        
         if (resNotas.ok) {
             const notasNuvem = await resNotas.json();
-            let notasLocais = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+            let todasNotasLocais = JSON.parse(localStorage.getItem('usina_historico') || '[]');
             
-            // Garantir que todas as notas locais tenham ID e Mapear para busca rápida
+            // 1. Filtragem Local Inteligente
+            let historicoProcessado = [];
+            if (unidadeAtual === 'GERAL') {
+                historicoProcessado = notasNuvem;
+            } else {
+                // Se estamos em uma usina específica:
+                // Pegamos notas da usina OU notas sem unidade (que serão "adotadas" por este computador)
+                historicoProcessado = notasNuvem.filter(n => !n.unidade || n.unidade === unidadeAtual);
+            }
+
+            // 2. Mesclar com Local e Preservar outras usinas
             const mapaFinal = {};
-            notasLocais.forEach(n => {
-                const id = n.id && n.id.length > 30 ? n.id : gerarIDNota(n);
-                n.id = id;
-                mapaFinal[id] = n;
-            });
-
-            const idsNuvem = new Set(notasNuvem.map(n => n.id));
             
-            // Determinamos a "janela de tempo" que trouxemos da nuvem
-            // Se trouxemos notas, qualquer nota local que tenha timestamp maior que a mais antiga da nuvem
-            // DEVERIA estar no pacote. Se não estiver, é porque foi deletada na nuvem.
-            const minTimestampNuvem = notasNuvem.length > 0 
-                ? Math.min(...notasNuvem.map(n => n.timestamp || 0)) 
-                : 0;
-
-            // 1. Filtragem de Exclusões (Mirroring Reverso)
-            // Removemos do mapa local as notas que deveriam estar na nuvem mas não estão
-            Object.keys(mapaFinal).forEach(id => {
-                const local = mapaFinal[id];
-                // Se a nota local é RECENTE (dentro da janela da nuvem) mas NÃO veio no pacote da nuvem
-                if (local.timestamp >= minTimestampNuvem && !idsNuvem.has(id)) {
-                    delete mapaFinal[id]; // Foi deletada na nuvem, deletamos no local
+            // Preserva o que já temos de outras usinas que não vieram no fetch (opcional, mas seguro)
+            todasNotasLocais.forEach(n => {
+                if (n.unidade && n.unidade !== unidadeAtual && unidadeAtual !== 'GERAL') {
+                    mapaFinal[n.id] = n;
                 }
             });
 
-            // 2. Adicionamos/Sobrescrevemos com as notas que vieram da nuvem (Verdade Absoluta)
-            notasNuvem.forEach(n => {
+            // Adiciona as notas processadas da nuvem
+            historicoProcessado.forEach(n => {
+                // Se a nota não tem unidade, ela "vira" a unidade atual ao ser baixada
+                if (!n.unidade && unidadeAtual !== 'GERAL') n.unidade = unidadeAtual;
                 mapaFinal[n.id] = n;
             });
 
             const historicoFinal = Object.values(mapaFinal).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             localStorage.setItem('usina_historico', JSON.stringify(historicoFinal));
 
-            // CRÍTICO: Atualizar a interface se a função estiver disponível
-            if (window.carregarHistorico) {
-                window.carregarHistorico();
-            }
+            if (window.carregarHistorico) window.carregarHistorico();
         }
         return { success: true };
     } catch (e) { 
@@ -225,6 +203,7 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
         const mapaUnico = new Map();
 
         notasRaw.forEach(n => {
+            const finalUnidade = n.unidade || unidadeAtual; // Usa a unidade da nota se disponível
             const novaNota = {};
             todasAsChaves.forEach(key => {
                 let valor = (n[key] !== undefined && n[key] !== null) ? n[key] : null;
@@ -235,12 +214,11 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
             novaNota.agua = n.agua_mistura || n.agua_corrigida || n.agua || 0;
             novaNota.qtd = novaNota.agua; 
             novaNota.gelo = n.gelo || 0;
-            novaNota.unidade = unidadeAtual;
+            novaNota.unidade = finalUnidade;
             
             if (n.frente && !novaNota.local) novaNota.local = n.frente;
             if (n.al && !novaNota.betoneira) novaNota.betoneira = n.al;
 
-            // Gerar ID se não for um UUID válido
             const finalId = (n.id && n.id.length > 30) ? n.id : gerarIDNota(n);
             novaNota.id = finalId;
             
@@ -252,7 +230,7 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
         let sucessos = 0;
         let falhas = 0;
 
-        // 1. ENVIO/ATUALIZAÇÃO (UPSERT)
+        // 1. ENVIO/ATUALIZAÇÃO (UPSERT) DE NOTAS
         for (const nota of notasPadronizadas) {
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/notas`, {
@@ -269,7 +247,21 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
             } catch (e) { falhas++; }
         }
 
-        // 2. ESPELHAMENTO: Deletar da nuvem o que não existe mais localmente (para esta unidade)
+        // 2. SINCRONIZAÇÃO DE CONFIGURAÇÕES (Traços, Frota, etc)
+        const configsParaSync = [
+            { id: 'tracos', key: 'usina_tracos' },
+            { id: 'frota', key: 'usina_frota' },
+            { id: 'motoristas', key: 'usina_motoristas' },
+            { id: 'recebimentos_cimento', key: 'usina_recebimentos_cimento' },
+            { id: 'materiais', key: 'usina_materiais' }
+        ];
+
+        for (const config of configsParaSync) {
+            const dadosLocais = JSON.parse(localStorage.getItem(config.key) || (config.id === 'tracos' ? '{}' : '[]'));
+            await window.dbSalvarConfiguracoes(config.id, dadosLocais);
+        }
+
+        // 3. ESPELHAMENTO: Deletar da nuvem o que não existe mais localmente (para esta unidade)
         try {
             const resNuvem = await fetch(`${SUPABASE_URL}/rest/v1/notas?select=id&unidade=eq.${unidadeAtual}`, {
                 headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
@@ -278,7 +270,6 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
                 const idsNuvem = await resNuvem.json();
                 for (const item of idsNuvem) {
                     if (!idsLocais.has(item.id)) {
-                        // Se está na nuvem mas não está no local, deleta da nuvem
                         await window.dbExcluirNota(item.id);
                     }
                 }
@@ -286,14 +277,9 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
         } catch (e) { console.error("Erro no espelhamento:", e); }
 
         window.isSyncing = false;
-        if (falhas === 0) {
-            return { success: true, message: `Sincronizado! (${sucessos} notas)` };
-        } else {
-            return { success: true, message: `Sincronizado parcial: ${sucessos} ok, ${falhas} falhas.` };
-        }
+        return { success: true, message: `Sincronização concluída! Notas e Configurações enviadas.` };
     } catch (e) { 
         console.error("Erro Conexão:", e);
-        alert("Erro de Conexão:\n" + e.message);
         window.isSyncing = false;
         return { success: false, error: e.message }; 
     }
@@ -338,6 +324,36 @@ window.dbBaixarEstoqueSilos = async () => {
     } catch (e) { console.error("Erro ao baixar silos:", e); }
     return null;
 };
+
+
+window.dbSalvarConfiguracoes = async (tipo, payload) => {
+    try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
+            method: 'POST',
+            headers: { 
+                'apikey': SUPABASE_KEY, 
+                'Authorization': `Bearer ${SUPABASE_KEY}`, 
+                'Content-Type': 'application/json', 
+                'Prefer': 'resolution=merge-duplicates' 
+            },
+            body: JSON.stringify({ id: tipo, dados: payload, updated_at: new Date().toISOString() })
+        });
+        return response.ok;
+    } catch (e) { return false; }
+};
+
+window.dbCarregarConfiguracoes = async (tipo, valorDefault) => {
+    try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.${tipo}&select=dados`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            return data && data.length > 0 ? data[0].dados : valorDefault;
+        }
+    } catch (e) {}
+    return valorDefault;
+};
 </script>
 <script>// cloud_v2.js - VERSÃO MULTI-USINAS + BACKUP
 window.abrirConfigCloud = async () => {
@@ -380,9 +396,18 @@ window.salvarUnidade = async () => {
         return;
     }
 
-    const nome = document.getElementById('cloud-unidade-input').value;
-    localStorage.setItem('usina_unidade', nome);
-    alert("✅ Unidade '" + nome + "' configurada com sucesso!");
+    const nome = document.getElementById('cloud-unidade-input').value.trim().toUpperCase();
+    if (!nome) return alert("Informe o nome da unidade!");
+
+    // Chama a função global de troca rápida que já limpa e recarrega tudo
+    if (window.trocarUnidadeRapido) {
+        await window.trocarUnidadeRapido(nome);
+    } else {
+        localStorage.setItem('usina_unidade', nome);
+    }
+
+    alert("✅ Unidade '" + nome + "' configurada e dados sincronizados!");
+    window.fecharConfigCloud();
 };
 
 window.trocarSenhaPainel = async () => {
@@ -439,20 +464,75 @@ window.inicializarNuvem = async () => {
     const badge = document.getElementById('cloud-badge');
     if (!badge) return;
     badge.innerText = "● Conectando...";
-    const result = await window.initDatabase ? await window.initDatabase() : { success: false };
+    const result = await (window.initDatabase ? window.initDatabase() : { success: false });
     if (result.success) {
         badge.innerText = "● Nuvem Online";
         badge.style.background = "#dcfce7";
         badge.style.color = "#166534";
+        
+        // 1. Baixar Histórico de Notas
         await window.dbBaixarHistoricoDaNuvem();
+        
+        // 2. Baixar Configurações (Traços, Frota, etc)
+        const configs = [
+            { id: 'tracos', key: 'usina_tracos' },
+            { id: 'frota', key: 'usina_frota' },
+            { id: 'motoristas', key: 'usina_motoristas' },
+            { id: 'recebimentos_cimento', key: 'usina_recebimentos_cimento' },
+            { id: 'materiais', key: 'usina_materiais' }
+        ];
+
+        for (const config of configs) {
+            const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
+            if (dadosNuvem) {
+                localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
+                // Atualiza variáveis globais se existirem
+                if (config.id === 'tracos') { TRACOS_DB = dadosNuvem; if(window.popularTracos) popularTracos(); }
+                if (config.id === 'frota') { if(window.popularFrota) popularFrota(); }
+                if (config.id === 'motoristas') { if(window.popularMotoristas) popularMotoristas(); }
+                if (config.id === 'recebimentos_cimento') { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
+            }
+        }
     }
 };
 
-document.addEventListener('click', (e) => {
-    if (e.target && e.target.innerText && e.target.innerText.includes('GRAVAR E IMPRIMIR')) {
-        setTimeout(async () => { await window.dbSincronizarTudoLocalParaNuvem(); }, 3000);
+// LISTENER PARA SINCRONIZAÇÃO ENTRE ABAS
+window.addEventListener('storage', (event) => {
+    const keysToSync = ['usina_tracos', 'usina_frota', 'usina_motoristas', 'usina_recebimentos_cimento', 'usina_unidade'];
+    if (keysToSync.includes(event.key)) {
+        console.log(`🔄 Sincronizando aba: ${event.key} alterado.`);
+        if (event.key === 'usina_tracos') {
+            TRACOS_DB = JSON.parse(event.newValue || '{}');
+            if(window.popularTracos) popularTracos();
+        }
+        if (event.key === 'usina_frota' && window.popularFrota) popularFrota();
+        if (event.key === 'usina_motoristas' && window.popularMotoristas) popularMotoristas();
+        if (event.key === 'usina_recebimentos_cimento' && window.renderizarHistoricoCimento) renderizarHistoricoCimento();
+        if (event.key === 'usina_unidade') window.location.reload();
     }
 });
+
+// 1. Sincronização Automática (Gatilho ao Gravar Nota)
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.innerText && (e.target.innerText.includes('GRAVAR E IMPRIMIR') || e.target.innerText.includes('Confirmar Entrada'))) {
+        console.log("🚀 Gatilho de sincronização detectado...");
+        setTimeout(async () => { 
+            await window.dbSincronizarTudoLocalParaNuvem(); 
+            console.log("☁️ Backup automático concluído.");
+        }, 3000);
+    }
+});
+
+// 2. Sincronização Automática (A cada 60 minutos)
+setInterval(async () => {
+    if (window.isSyncing) return;
+    console.log("🕒 Iniciando sincronização automática de hora em hora...");
+    const res = await window.dbSincronizarTudoLocalParaNuvem();
+    if (res.success) {
+        await window.dbBaixarHistoricoDaNuvem();
+        console.log("✅ Sincronização automática concluída com sucesso.");
+    }
+}, 60 * 60 * 1000); // 1 hora em milissegundos
 
 setTimeout(window.inicializarNuvem, 1000);
 </script>
@@ -485,12 +565,35 @@ setTimeout(window.inicializarNuvem, 1000);
         body { background-color: var(--bg-color); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
 
         /* Sidebar */
-        .sidebar { width: 260px; background-color: #1e293b; color: #fff; display: flex; flex-direction: column; }
-        .logo-area { padding: 20px; font-size: 24px; font-weight: 700; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 10px; }
-        .logo-area span { color: #60a5fa; }
-        .menu { list-style: none; padding: 20px 0; flex-grow: 1; }
-        .menu li a { display: block; padding: 15px 25px; color: #cbd5e1; text-decoration: none; font-weight: 500; transition: 0.2s; }
-        .menu li a:hover, .menu li a.active { background-color: #334155; color: #fff; border-left: 4px solid #60a5fa; }
+        .sidebar { width: 260px; background-color: #0f172a; color: #fff; display: flex; flex-direction: column; }
+        .logo-area { padding: 30px 20px; font-size: 26px; font-weight: 800; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 10px; letter-spacing: 2px; }
+        .logo-area span { color: #3b82f6; }
+        
+        .menu { list-style: none; padding: 20px 12px; flex-grow: 1; }
+        .menu li { margin-bottom: 4px; }
+        .menu li a { 
+            display: flex; 
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px; 
+            color: #94a3b8; 
+            text-decoration: none; 
+            font-weight: 500; 
+            font-size: 14px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            border-radius: 10px;
+        }
+        .menu li a:hover { 
+            background-color: rgba(255, 255, 255, 0.05); 
+            color: #f8fafc; 
+            transform: translateX(4px);
+        }
+        .menu li a.active { 
+            background: linear-gradient(135deg, #3b82f6, #2563eb); 
+            color: #fff; 
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+            font-weight: 600;
+        }
 
         /* Main Content */
         .main-content { flex-grow: 1; display: flex; flex-direction: column; overflow-y: auto; }
@@ -546,6 +649,8 @@ setTimeout(window.inicializarNuvem, 1000);
             body { background: #fff !important; padding: 0 !important; display: block !important; overflow: visible !important; height: auto !important; }
             .sidebar, .header, .materials-banner, .dashboard-container, .main-content { display: none !important; }
             #print-section.active { display: block !important; }
+            /* Classe para permitir a impressão da aba ativa quando necessário */
+            .main-content.print-active-tab { display: block !important; position: absolute; left: 0; top: 0; width: 100%; background: white; height: auto; overflow: visible; z-index: 9999; }
         }
 
         /* Estilos universais para a Nota (usados na prévia e na impressão) */
@@ -617,7 +722,7 @@ setTimeout(window.inicializarNuvem, 1000);
             #print-umidade th, #print-umidade td { border: 1px solid #000; padding: 4px 6px; font-size: 10px; text-align: center; }
             #print-umidade .header-cell { background-color: #d1d5db !important; -webkit-print-color-adjust: exact; font-weight: bold; text-transform: uppercase; font-size: 9px; }
             
-            /* Suporte para modo paisagem */
+            /* Suporte para modo paisagem no relatório de umidade */
             body.landscape-print @page { size: A4 landscape; margin: 10mm; }
         }
 
@@ -659,19 +764,29 @@ setTimeout(window.inicializarNuvem, 1000);
 
     <!-- Sidebar -->
     <aside class="sidebar">
-        <div class="logo-area">
-            ATERPA <span>Usina</span>
+        <div class="logo-area" style="flex-direction: column; align-items: flex-start; gap: 4px; padding: 25px 20px;">
+            <div style="font-size: 26px; font-weight: 900; letter-spacing: 3px; color: #fff;">ATERPA</div>
+            <!-- Seletor (Apenas Vercel) -->
+            <select id="select-unidade-rapido" onchange="window.trocarUnidadeRapido(this.value)" style="width: 100%; padding: 8px; border-radius: 8px; border: none; background: #334155; color: #fff; font-weight: bold; font-size: 14px; cursor: pointer; outline: none; margin-top: 5px; border-left: 4px solid #60a5fa;">
+                <option value="A369">USINA A369</option>
+                <option value="A375">USINA A375</option>
+                <option value="GERAL">USINA GERAL</option>
+            </select>
+            <!-- Display Fixo (Apenas Usina Local) -->
+            <div id="display-unidade-fixa" style="display: none; width: 100%; padding: 8px; border-radius: 8px; background: #1e293b; color: #60a5fa; font-weight: 800; font-size: 14px; margin-top: 5px; border-left: 4px solid #60a5fa; text-align: center; letter-spacing: 1px;">
+                USINA A369
+            </div>
         </div>
         <ul class="menu" id="menuLateral">
-            <li><a href="#" onclick="mudarAba('emissao', this)" class="active">Nova Nota (Emissão)</a></li>
-            <li><a href="#" onclick="mudarAba('historico', this)">Histórico de Notas</a></li>
-            <li><a href="#" onclick="mudarAba('tracos', this)">🧪 Cadastro de Traços</a></li>
-            <li><a href="#" onclick="mudarAba('frota', this)">🚚 Gestão de Frota</a></li>
-            <li><a href="#" onclick="mudarAba('umidade', this)">💧 Correção de Umidade</a></li>
-            <li><a href="#" onclick="mudarAba('nota-preview', this)">📄 Visualização da Nota</a></li>
-            <li><a href="#" onclick="mudarAba('relatorios', this)">Relatórios de Consumo</a></li>
-            <li><a href="#" onclick="mudarAba('resumo', this)">📅 Resumo Diário</a></li>
-            <li><a href="#" onclick="mudarAba('segunda-via', this)">🖨️ Segunda Via</a></li>
+            <li><a href="#" onclick="mudarAba('emissao', this)" class="active"><span>📝</span> Nova Nota</a></li>
+            <li><a href="#" onclick="mudarAba('historico', this)"><span>📅</span> Histórico</a></li>
+            <li><a href="#" onclick="mudarAba('tracos', this)"><span>🧪</span> Traços</a></li>
+            <li><a href="#" onclick="mudarAba('frota', this)"><span>🚚</span> Frota</a></li>
+            <li><a href="#" onclick="mudarAba('umidade', this)"><span>💧</span> Umidade</a></li>
+            <li><a href="#" onclick="mudarAba('recebimento-cimento', this)"><span>🏗️</span> Recebimento</a></li>
+            <li><a href="#" onclick="mudarAba('relatorios', this)"><span>📊</span> Relatórios</a></li>
+            <li><a href="#" onclick="mudarAba('resumo', this)"><span>📋</span> Resumo Diário</a></li>
+            <li><a href="#" onclick="mudarAba('segunda-via', this)"><span>🖨️</span> Segunda Via</a></li>
             <li style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
                 <a href="javascript:void(0)" onclick="window.abrirConfigCloud()" style="color: #14b8a6; text-decoration: none; font-size: 13px;">☁️ Painel Multi-Usina</a>
             </li>
@@ -697,7 +812,7 @@ setTimeout(window.inicializarNuvem, 1000);
 
         <!-- Preview da nota encontrada -->
         <div id="container-segunda-via" style="display: none; background: #94a3b8; padding: 20px; border-radius: 12px; display: flex; justify-content: center;">
-            <div style="background: white; width: 210mm; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border-radius: 4px;">
+            <div style="background: white; width: 210mm; border: 1px solid #e2e8f0; border-radius: 4px;">
                 <div id="preview-segunda-via" class="print-note-layout"></div>
             </div>
         </div>
@@ -718,6 +833,7 @@ setTimeout(window.inicializarNuvem, 1000);
 
     <main id="aba-emissao" class="main-content" style="padding: 10px 20px; background: #f4f7fb; overflow: hidden; display: flex; flex-direction: column;">
         
+        
         <!-- Painel de Silos -->
         <div style="display: flex; gap: 15px; margin-bottom: 8px;">
             <div style="flex: 1; background: white; padding: 8px 12px; border-radius: 12px; border: 1px solid #e2e8f0; border-left: 4px solid #64748b; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
@@ -725,7 +841,10 @@ setTimeout(window.inicializarNuvem, 1000);
                     <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">SILO 1 (CIMENTO)</div>
                     <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 2px;" id="visorSilo1">0,0 <span style="font-size: 10px; color: #94a3b8;">KG</span></div>
                 </div>
-                <button onclick="abastecerSilo('Silo 1')" style="background: #eff6ff; color: #3b82f6; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;">+ Abastecer</button>
+                <div style="display: flex; gap: 5px;">
+                    <button onclick="window.abrirModalRecebimento('Silo 1')" style="background: #eff6ff; color: #3b82f6; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;">+ Abastecer</button>
+                    <button onclick="window.zerarSilo('Silo 1')" style="background: #fef2f2; color: #ef4444; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;" title="Zerar Estoque">🗑️</button>
+                </div>
             </div>
             
             <div style="flex: 1; background: white; padding: 8px 12px; border-radius: 12px; border: 1px solid #e2e8f0; border-left: 4px solid #64748b; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
@@ -733,20 +852,21 @@ setTimeout(window.inicializarNuvem, 1000);
                     <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase;">SILO 2 (CIMENTO)</div>
                     <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 2px;" id="visorSilo2">0,0 <span style="font-size: 10px; color: #94a3b8;">KG</span></div>
                 </div>
-                <button onclick="abastecerSilo('Silo 2')" style="background: #eff6ff; color: #3b82f6; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;">+ Abastecer</button>
+                <div style="display: flex; gap: 5px;">
+                    <button onclick="window.abrirModalRecebimento('Silo 2')" style="background: #eff6ff; color: #3b82f6; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;">+ Abastecer</button>
+                    <button onclick="window.zerarSilo('Silo 2')" style="background: #fef2f2; color: #ef4444; border: none; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s;" title="Zerar Estoque">🗑️</button>
+                </div>
             </div>
         </div>
-        
+
         <table class="materials-table" style="margin-bottom: 8px;">
             <thead id="header-barra-materiais">
                 <!-- Dinâmico -->
-            </tr>
             </thead>
             <tbody id="body-barra-materiais">
                 <!-- Dinâmico -->
             </tbody>
         </table>
-
 
         <div class="excel-layout">
             <!-- Coluna de Formulario -->
@@ -795,10 +915,12 @@ setTimeout(window.inicializarNuvem, 1000);
             <!-- Coluna de Listas -->
             <div class="excel-lists-col">
                 <div class="list-container" style="flex: 1.2;">
+                    <div style="background: #f1f5f9; padding: 8px 12px; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; border-bottom: 1px solid #e2e8f0;">TRAÇOS</div>
                     <ul class="excel-list" id="listaTracos"></ul>
                 </div>
                 
                 <div class="list-container" style="flex: 0.6;">
+                    <div style="background: #f1f5f9; padding: 8px 12px; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; border-bottom: 1px solid #e2e8f0;">BETONEIRAS</div>
                     <ul class="excel-list" id="listaPlacas">
                         <li>AL-8828</li>
                         <li>AL-8831</li>
@@ -816,6 +938,7 @@ setTimeout(window.inicializarNuvem, 1000);
                 </div>
 
                 <div class="list-container" style="flex: 1.5;">
+                    <div style="background: #f1f5f9; padding: 8px 12px; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; border-bottom: 1px solid #e2e8f0;">MOTORISTAS</div>
                     <ul class="excel-list" id="listaMotoristas">
                         <li>JOSE EDIVALDO CONCEICAO OLIVEIRA</li>
                         <li>JOSE FELIPE GONÇALO FERREIRA</li>
@@ -861,7 +984,7 @@ setTimeout(window.inicializarNuvem, 1000);
                     <div style="position: absolute; top:0; left:0; width: 4px; height: 100%; background: #3b82f6;"></div>
                     <label style="display: block; font-weight: 700; color: #64748b; font-size: 11px; text-transform: uppercase; margin-bottom: 12px;">Areia Natural (%)</label>
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="number" id="umidAreia" value="0" step="0.1" min="0" oninput="salvarUmidade()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1e293b; background: #fbfcfe; outline: none;">
+                        <input type="number" id="umid_areia" value="0" step="0.1" min="0" oninput="salvarUmidade()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1e293b; background: #fbfcfe; outline: none;">
                         <div style="color: #94a3b8; font-weight: bold; font-size: 18px;">%</div>
                     </div>
                 </div>
@@ -870,7 +993,7 @@ setTimeout(window.inicializarNuvem, 1000);
                     <div style="position: absolute; top:0; left:0; width: 4px; height: 100%; background: #64748b;"></div>
                     <label style="display: block; font-weight: 700; color: #64748b; font-size: 11px; text-transform: uppercase; margin-bottom: 12px;">Brita 0 (%)</label>
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="number" id="umidBrita0" value="0" step="0.1" min="0" oninput="salvarUmidade()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1e293b; background: #fbfcfe; outline: none;">
+                        <input type="number" id="umid_brita0" value="0" step="0.1" min="0" oninput="salvarUmidade()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1e293b; background: #fbfcfe; outline: none;">
                         <div style="color: #94a3b8; font-weight: bold; font-size: 18px;">%</div>
                     </div>
                 </div>
@@ -879,7 +1002,7 @@ setTimeout(window.inicializarNuvem, 1000);
                     <div style="position: absolute; top:0; left:0; width: 4px; height: 100%; background: #94a3b8;"></div>
                     <label style="display: block; font-weight: 700; color: #64748b; font-size: 11px; text-transform: uppercase; margin-bottom: 12px;">Brita 1 (%)</label>
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="number" id="umidBrita1" value="0" step="0.1" min="0" oninput="salvarUmidade()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1e293b; background: #fbfcfe; outline: none;">
+                        <input type="number" id="umid_brita1" value="0" step="0.1" min="0" oninput="salvarUmidade()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1e293b; background: #fbfcfe; outline: none;">
                         <div style="color: #94a3b8; font-weight: bold; font-size: 18px;">%</div>
                     </div>
                 </div>
@@ -929,6 +1052,7 @@ setTimeout(window.inicializarNuvem, 1000);
     <main id="aba-tracos" class="main-content" style="display: none; padding: 20px 30px; background: #f4f7fb; overflow-y: auto; overflow-x: hidden; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 100%;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 10px;">
             <h2 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0; flex: 1;">Gerenciamento e Cadastro de Traços (Consumo Base 1m³)</h2>
+            <button onclick="exportarTracosExcel()" style="background: #10b981; border: none; color: white; padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2); transition: 0.2s; display: flex; align-items: center; gap: 6px;">📥 Exportar Excel</button>
             <button onclick="abrirConfigMateriais()" style="background: #3b82f6; border: none; color: white; padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2); transition: 0.2s; display: flex; align-items: center; gap: 6px;">⚙️ Gerenciar Materiais</button>
             <button onclick="trocarSenha()" style="background: white; border: 1px solid #e2e8f0; color: #475569; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: 0.2s;">🔑 Redefinir Senha do Menu</button>
         </div>
@@ -959,6 +1083,7 @@ setTimeout(window.inicializarNuvem, 1000);
                 <table class="materials-table" style="margin-bottom: 0; box-shadow: none; border-radius: 0; width: max-content; min-width: 100%;">
                     <thead>
                         <tr>
+                            <th>USINA</th>
                             <th style="text-align: left;">CÓDIGO DO TRAÇO</th>
                             <th>AÇÃO</th>
                             <th>STATUS</th>
@@ -1044,7 +1169,7 @@ setTimeout(window.inicializarNuvem, 1000);
     <main id="aba-relatorios" class="main-content" style="display: none; padding: 20px 30px; background: #f4f7fb; overflow-y: auto; overflow-x: hidden; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 100%;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
             <h2 style="color: #1e293b; font-size: 20px; font-weight: 700;">Painel de Inteligência e Consumo</h2>
-            <button onclick="window.print()" class="no-print" style="background: white; border: 1px solid #e2e8f0; color: #475569; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 8px; transition: 0.2s;">
+            <button onclick="window.imprimirRelatorios()" class="no-print" style="background: white; border: 1px solid #e2e8f0; color: #475569; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 8px; transition: 0.2s;">
                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg> Impressão Direta
             </button>
         </div>
@@ -1061,7 +1186,7 @@ setTimeout(window.inicializarNuvem, 1000);
             <div class="form-group" style="flex: 2; min-width: 200px;">
                 <label>Traço Específico</label>
                 <select id="relFiltroTraco" class="form-input" style="text-align: left;">
-                    <option value="">TODOS</option>
+                    <option value="">TODOS OS TRAÇOS</option>
                 </select>
             </div>
             <button onclick="gerarRelatorio()" style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: bold; height: 38px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2); transition: 0.2s;">Filtrar / Atualizar</button>
@@ -1290,7 +1415,8 @@ setTimeout(window.inicializarNuvem, 1000);
             tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
             motoristaSelecionadoObj: { matricula: "60580", nome: "LUAN JONAS DAVI" },
             placaSelecionadaObj: { al: "AL-7312", placa: "TGK8G25" },
-            senhaLiberada: false
+            senhaLiberada: false,
+            tracoEmEdicao: null
         };
 
         window.onload = function() {
@@ -1324,11 +1450,35 @@ setTimeout(window.inicializarNuvem, 1000);
                 });
             }
 
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            const displayFix = document.getElementById('display-unidade-fixa');
+            if(displayFix) displayFix.innerText = "USINA " + unidadeAtual;
+
+            const selectRapido = document.getElementById('select-unidade-rapido');
+            if(selectRapido) selectRapido.value = unidadeAtual;
+
+            // Auto-Organização de Traços por Nome
+            const autoOrganizarTracos = () => {
+                let tracos = JSON.parse(localStorage.getItem('usina_tracos') || '{}');
+                let mudou = false;
+                Object.keys(tracos).forEach(n => {
+                    if (!tracos[n].unidade) {
+                        if (n.includes('375')) { tracos[n].unidade = 'A375'; mudou = true; }
+                        else if (n.includes('369')) { tracos[n].unidade = 'A369'; mudou = true; }
+                    }
+                });
+                if (mudou) {
+                    localStorage.setItem('usina_tracos', JSON.stringify(tracos));
+                    TRACOS_DB = tracos;
+                }
+            };
+            autoOrganizarTracos();
+
             popularBarraMateriais();
             popularTracos();
             popularCamposCadastroTraco();
-            popularCamposUmidade();
             popularCamposPesagem();
+            carregarUmidadesSalvas();
             popularFrota();
             recalcular();
         };
@@ -1346,7 +1496,16 @@ setTimeout(window.inicializarNuvem, 1000);
             }
         };
         
-        window.abrirConfigMateriais = function() {
+        window.abrirConfigMateriais = async function() {
+            const senhaSalva = localStorage.getItem('usina_senha_acesso') || '1988';
+            const master = "ATERPA369";
+            const pass = await window.pedirSenha("Digite a senha (ADM ou NORMAL) para gerenciar materiais:");
+            
+            if (pass !== senhaSalva && pass !== master && pass !== "1988") {
+                if (pass !== null) alert("❌ Senha incorreta! Acesso negado.");
+                return;
+            }
+
             let overlay = document.createElement('div');
             overlay.id = 'overlay-materiais';
             overlay.style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.7); z-index: 10000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);";
@@ -1526,17 +1685,7 @@ setTimeout(window.inicializarNuvem, 1000);
         };
 
         window.mudarAba = async function(abaId, el) {
-            // Caso especial: Cadastro de Traços e Gestão de Frota exigem senha
-            if (['tracos'].includes(abaId)) {
-                let senha = await pedirSenha(`Acesso restrito ao Painel de Traços. Digite a Senha Mestra:`);
-                let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
-                let senhaAcesso = localStorage.getItem('usina_senha_acesso') || "1988";
-                
-                if (senha !== senhaOficial && senha !== "ATERPA369" && senha !== "1988" && senha !== senhaAcesso) {
-                    if (senha !== null) alert("Senha Incorreta! Acesso Negado.");
-                    return;
-                }
-            }
+            // Caso especial: Gestão de Frota e configurações críticas podem exigir senha (atualmente livre para traços)
 
             let alvo = document.getElementById('aba-' + abaId);
             if (!alvo) {
@@ -1544,16 +1693,20 @@ setTimeout(window.inicializarNuvem, 1000);
                 return;
             }
             
-            let abas = ['aba-emissao', 'aba-tracos', 'aba-frota', 'aba-historico', 'aba-relatorios', 'aba-umidade', 'aba-nota-preview', 'aba-segunda-via', 'aba-resumo'];
+            let abas = ['aba-emissao', 'aba-tracos', 'aba-frota', 'aba-historico', 'aba-relatorios', 'aba-umidade', 'aba-nota-preview', 'aba-segunda-via', 'aba-resumo', 'aba-recebimento-cimento'];
             abas.forEach(id => {
                 let domAba = document.getElementById(id);
                 if(domAba) domAba.style.display = 'none';
             });
             
             if (abaId === 'historico') carregarHistorico();
-            if (abaId === 'relatorios') setupRelatorios();
+            if (abaId === 'relatorios') {
+                setupRelatorios();
+                setTimeout(gerarRelatorio, 100);
+            }
             if (abaId === 'nota-preview') window.atualizarPreviewNota();
             if (abaId === 'resumo') setTimeout(carregarResumoDiario, 100);
+            if (abaId === 'recebimento-cimento') window.renderizarHistoricoCimento();
             
             alvo.style.display = 'flex';
 
@@ -1596,7 +1749,8 @@ setTimeout(window.inicializarNuvem, 1000);
                     gelo: parseFloat(document.getElementById('inputGelo').value) || 0,
                     silo: document.getElementById('inputSilo').value,
                     timestamp: new Date().getTime(),
-                    materiais: {}
+                    materiais: {},
+                    unidade: localStorage.getItem('usina_unidade') || 'A369'
                 };
 
                 // --- MATEMÁTICA DA ÁGUA (SOLICITADA PELO USUÁRIO) ---
@@ -1630,10 +1784,13 @@ setTimeout(window.inicializarNuvem, 1000);
                 const aguaTeorica = (tracoObj ? (tracoObj.agua || 0) : 0) * volume;
                 nota.agua_mistura = aguaTeorica - nota.agua_retida;
                 nota.agua = nota.agua_mistura; // Garante que 510 vá para o histórico
+                // Tag de Unidade para separar os dados no banco
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+                nota.unidade = unidadeAtual;
                 // ---------------------------------------------------------
 
                 let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-                let index = hist.findIndex(x => x.nf === nota.nf);
+                let index = hist.findIndex(x => x.nf === nota.nf && x.unidade === unidadeAtual);
                 if (index !== -1) hist[index] = nota;
                 else hist.push(nota);
                 
@@ -1648,6 +1805,19 @@ setTimeout(window.inicializarNuvem, 1000);
             if(!tBody) return;
             tBody.innerHTML = "";
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+            
+            // --- FILTRO DE USINA ---
+            const unidadeFiltro = localStorage.getItem('usina_unidade') || 'A369';
+            if (unidadeFiltro !== 'GERAL') {
+                hist = hist.filter(n => n.unidade === unidadeFiltro);
+            }
+            
+            // Atualizar Título com a Unidade Atual para evitar confusão
+            const tituloHistorico = document.querySelector('.main-content h2') || document.querySelector('h1');
+            if (tituloHistorico && !tituloHistorico.innerText.includes('Recebimento')) {
+                tituloHistorico.innerText = "Histórico de Produção - " + (unidadeFiltro === 'GERAL' ? 'TODAS AS USINAS' : unidadeFiltro);
+            }
+            // -----------------------
             
             // Atualizar Headers da Tabela de Histórico (Dinamico)
             const rowHeader = document.getElementById('row-header-historico');
@@ -1667,6 +1837,7 @@ setTimeout(window.inicializarNuvem, 1000);
                     <th style="min-width: 70px;">AGUA USI</th>
                     <th style="min-width: 60px;">HR MIST.</th>
                     <th style="min-width: 60px; background:#fecaca; color:#7f1d1d; border-right: 2px solid white; font-weight:900;">NOTA</th>
+                    <th style="min-width: 70px; background:#14b8a6; color:white;">USINA</th>
                 `;
                 MAT_DB.forEach(mat => {
                     const th = document.createElement('th');
@@ -1711,6 +1882,7 @@ setTimeout(window.inicializarNuvem, 1000);
                             <span style="cursor:pointer; font-size:12px; margin-left: 5px;" onclick="excluirNotaHistorico('${n.nf}')" title="Excluir Nota">🗑️</span>
                         </div>
                     </td>
+                    <td style="font-size:11px; font-weight:bold; color:#14b8a6;">${n.unidade || '---'}</td>
                     ${htmlMats}
                     <td style="font-size:11px;">${n.silo || '—'}</td>
                     <td style="font-size:11px; background:#e0f2fe; color:#075985; font-weight:bold;">${f(n.agua_retida)}</td>
@@ -1721,7 +1893,10 @@ setTimeout(window.inicializarNuvem, 1000);
         };
 
         window.excluirNotaHistorico = async function(nf) {
-            let senha = await pedirSenha("Atenção! Você está prestes a excluir a Nota " + nf + " do banco de dados. Digite a Senha Mestra para prosseguir:");
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+            let msg = "Atenção! Você está prestes a excluir a Nota " + nf + " (Usina " + unidadeAtual + ") do banco de dados.\n\nDigite a Senha para prosseguir:";
+            
+            let senha = await pedirSenha(msg);
             let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
             let senhaAcesso = localStorage.getItem('usina_senha_acesso') || "1988";
             
@@ -1731,9 +1906,9 @@ setTimeout(window.inicializarNuvem, 1000);
             }
 
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            const notaParaExcluir = hist.find(x => String(x.nf) === String(nf));
+            // FILTRO CRÍTICO: Buscar a nota que combina NF E UNIDADE
+            const notaParaExcluir = hist.find(x => String(x.nf) === String(nf) && (x.unidade === unidadeAtual || !x.unidade));
             
-            // Tenta excluir da nuvem (passando o objeto da nota como garantia)
             if (notaParaExcluir && window.dbExcluirNota) {
                 const resCloud = await window.dbExcluirNota(notaParaExcluir.id, notaParaExcluir);
                 if (!resCloud.success) {
@@ -1741,10 +1916,11 @@ setTimeout(window.inicializarNuvem, 1000);
                 }
             }
 
-            hist = hist.filter(x => String(x.nf) !== String(nf));
+            // Remove localmente apenas a nota da unidade correta
+            hist = hist.filter(x => !(String(x.nf) === String(nf) && (x.unidade === unidadeAtual || !x.unidade)));
             localStorage.setItem('usina_historico', JSON.stringify(hist));
             carregarHistorico();
-            alert("Nota " + nf + " removida com sucesso (Local e Nuvem).");
+            alert("Nota " + nf + " removida com sucesso da " + unidadeAtual + ".");
         };
 
         window.exportarCSV = function() {
@@ -1752,9 +1928,15 @@ setTimeout(window.inicializarNuvem, 1000);
             const materiaisAtuais = JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
             
+            // Filtro aplicado ao exportar também
+            const unidadeFiltro = localStorage.getItem('usina_unidade') || 'A369';
+            if (unidadeFiltro !== 'GERAL') {
+                hist = hist.filter(n => n.unidade === unidadeFiltro);
+            }
+            
             if(hist.length === 0) return alert("Nenhuma nota gerada ainda no histórico.");
             
-            let cabecalhos = ["DATA", "HORA", "CAMINHAO", "PLACA", "MATRICULA", "MOTORISTA", "FRENTE", "TRACO", "VOLUME", "AGUA_ADD", "AGUA_USINA", "HR_MISTURA", "NOTA"];
+            let cabecalhos = ["DATA", "HORA", "TURNO", "CAMINHAO", "PLACA", "MATRICULA", "MOTORISTA", "FRENTE", "TRACO", "VOLUME", "AGUA_ADD", "AGUA_USINA", "HR_MISTURA", "NOTA", "USINA"];
             
             // Adicionar materiais dinâmicos aos cabeçalhos
             materiaisAtuais.forEach(mat => {
@@ -1771,6 +1953,7 @@ setTimeout(window.inicializarNuvem, 1000);
                 let linha = [
                     n.data || "", 
                     n.hora_saida || "", 
+                    n.turno || "",
                     n.al || "", 
                     n.placa || "", 
                     n.matricula || "", 
@@ -1781,7 +1964,8 @@ setTimeout(window.inicializarNuvem, 1000);
                     n.agua_obra || 0, 
                     n.agua_usina || 0, 
                     n.hora_mistura || "", 
-                    n.nf || ""
+                    n.nf || "",
+                    n.unidade || ""
                 ];
                 
                 // Dados de materiais (Dinâmico)
@@ -1848,73 +2032,90 @@ setTimeout(window.inicializarNuvem, 1000);
             document.getElementById('resumoDataDisplay').innerText = dataPt;
             
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+            let unidadeFiltro = localStorage.getItem('usina_unidade') || 'A375';
+            
+            // Filtra notas do dia
             let notasDia = hist.filter(n => n.data === dataPt);
             
+            // Se não estiver em GERAL, filtra apenas a usina selecionada
+            if (unidadeFiltro !== 'GERAL') {
+                notasDia = notasDia.filter(n => (n.unidade || 'A375') === unidadeFiltro);
+            }
+
             let tBody = document.getElementById('tbodyResumo');
             tBody.innerHTML = "";
-            let volumeTotalCalc = 0;
-            let totaisMateriais = {};
-            MAT_DB.forEach(mat => totaisMateriais[mat.id] = 0);
-            
+            const containerKpis = document.getElementById('container-kpis-resumo');
+            if(containerKpis) containerKpis.innerHTML = '';
+
             if (notasDia.length === 0) {
                 tBody.innerHTML = `<tr><td colspan="7" style="padding:20px; color:#ef4444; font-weight:bold;">Nenhum embarque lançado em ${dataPt}!</td></tr>`;
             } else {
-                notasDia.forEach((n, idx) => {
-                    volumeTotalCalc += (n.volume || 0);
-                    MAT_DB.forEach(mat => {
-                        const val = n.materiais ? n.materiais[mat.id] : n[mat.id];
-                        totaisMateriais[mat.id] += (val || 0);
+                // Agrupar por Unidade
+                const grupos = {};
+                notasDia.forEach(n => {
+                    const uni = n.unidade || 'A375';
+                    if(!grupos[uni]) grupos[uni] = { notas: [], vol: 0, mat: {} };
+                    grupos[uni].notas.push(n);
+                });
+
+                Object.keys(grupos).sort().forEach(uni => {
+                    const g = grupos[uni];
+                    let volUni = 0;
+                    let matUni = {};
+                    MAT_DB.forEach(m => matUni[m.id] = 0);
+
+                    // Header da Usina na Tabela (Só mostra se for GERAL)
+                    if (unidadeFiltro === 'GERAL') {
+                        let trH = document.createElement('tr');
+                        trH.innerHTML = `<td colspan="7" style="background:#f1f5f9; padding:8px; font-weight:900; color:${uni === 'A369' ? '#b91c1c' : '#1e40af'}; text-align:left; border-left: 4px solid currentColor;">USINA ${uni}</td>`;
+                        tBody.appendChild(trH);
+                    }
+
+                    g.notas.forEach((n, idx) => {
+                        volUni += (n.volume || 0);
+                        MAT_DB.forEach(mat => {
+                            const val = n.materiais ? n.materiais[mat.id] : n[mat.id];
+                            matUni[mat.id] += (val || 0);
+                        });
+
+                        let tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td style="font-weight:bold; font-size:12px;">${idx + 1}</td>
+                            <td style="font-size:12px;">${n.hora_saida || '—'}</td>
+                            <td style="text-align:center; font-size:12px;">${n.motorista || ''}</td>
+                            <td style="text-align:center; font-size:12px; text-transform:uppercase;">${n.frente || ''}</td>
+                            <td style="font-weight:bold; font-size:12px;">${n.volume ? Number(n.volume).toLocaleString('pt-BR') : ''}</td>
+                            <td style="font-size:12px;">${n.nf || ''}</td>
+                            <td></td>
+                        `;
+                        tBody.appendChild(tr);
                     });
-                    
-                    let tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td style="font-weight:bold; font-size:12px;">${idx + 1}</td>
-                        <td style="font-size:12px;">${n.hora_saida || '—'}</td>
-                        <td style="text-align:center; font-size:12px;">${n.motorista || ''}</td>
-                        <td style="text-align:center; font-size:12px; text-transform:uppercase;">${n.frente || ''}</td>
-                        <td style="font-weight:bold; font-size:12px;">${n.volume ? Number(n.volume).toLocaleString('pt-BR') : ''}</td>
-                        <td style="font-size:12px;">${n.nf || ''}</td>
-                        <td></td>
-                    `;
-                    tBody.appendChild(tr);
-                });
-            }
-            
-            let fmt = (val) => Number(val || 0).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1});
-            let silosDB = window.usina_silos_db || JSON.parse(localStorage.getItem('usina_silos_db') || '{"Silo 1": 0, "Silo 2": 0}');
-            
-            const containerKpis = document.getElementById('container-kpis-resumo');
-            if(containerKpis) {
-                containerKpis.innerHTML = '';
-                
-                // Volume Total
-                containerKpis.innerHTML += `
-                    <div style="background: white; border-radius: 8px; padding: 10px 15px; border: 1px solid #e2e8f0; border-top: 4px solid #3b82f6;">
-                        <div style="color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase;">Volume Total</div>
-                        <div id="resumoVolume" style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 2px;">${fmt(volumeTotalCalc)} <span style="font-size:10px;">m³</span></div>
-                    </div>
-                `;
-                
-                // Silos
-                Object.keys(silosDB).forEach(silo => {
-                    containerKpis.innerHTML += `
-                        <div style="background: white; border-radius: 8px; padding: 10px 15px; border: 1px solid #e2e8f0; border-top: 4px solid #64748b;">
-                            <div style="color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase;">Estoque ${silo}</div>
-                            <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 2px;">${fmt(silosDB[silo])} <span style="font-size:10px;">KG</span></div>
-                        </div>
-                    `;
-                });
-                
-                // Materiais
-                MAT_DB.forEach(mat => {
-                    if(mat.type === 'cement' || mat.type === 'aggregate') {
-                        let color = mat.type === 'cement' ? '#8b5cf6' : (mat.id.includes('brita') ? '#10b981' : '#f59e0b');
-                        containerKpis.innerHTML += `
-                            <div style="background: white; border-radius: 8px; padding: 10px 15px; border: 1px solid #e2e8f0; border-top: 4px solid ${color};">
-                                <div style="color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase;">Consumo ${mat.label}</div>
-                                <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 2px;">${fmt(totaisMateriais[mat.id])} <span style="font-size:10px;">${mat.unit}</span></div>
+
+                    // KPIs da Usina
+                    if(containerKpis) {
+                        let fmt = (val) => Number(val || 0).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+                        let divG = document.createElement('div');
+                        divG.style = `display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:10px; margin-bottom:20px; padding:15px; background:white; border-radius:12px; border:1px solid #e2e8f0; border-top: 6px solid ${uni === 'A369' ? '#b91c1c' : '#1e40af'}`;
+                        divG.innerHTML = `<div style="grid-column: 1/-1; font-weight:900; color:${uni === 'A369' ? '#b91c1c' : '#1e40af'}; font-size:14px; text-transform:uppercase;">RESUMO CONSOLIDADO - USINA ${uni}</div>`;
+                        
+                        divG.innerHTML += `
+                            <div style="background:#f8fafc; padding:8px; border-radius:6px;">
+                                <div style="font-size:9px; font-weight:700; color:#64748b;">VOLUME TOTAL</div>
+                                <div style="font-size:16px; font-weight:900; color:#0f172a;">${fmt(volUni)} m³</div>
                             </div>
                         `;
+
+                        MAT_DB.forEach(mat => {
+                            if(mat.type === 'cement' || mat.type === 'aggregate') {
+                                divG.innerHTML += `
+                                    <div style="background:#f8fafc; padding:8px; border-radius:6px;">
+                                        <div style="font-size:9px; font-weight:700; color:#64748b;">${mat.label}</div>
+                                        <div style="font-size:16px; font-weight:900; color:#0f172a;">${fmt(matUni[mat.id])} ${mat.unit}</div>
+                                    </div>
+                                `;
+                            }
+                        });
+                        containerKpis.appendChild(divG);
                     }
                 });
             }
@@ -1932,6 +2133,14 @@ setTimeout(window.inicializarNuvem, 1000);
             document.body.appendChild(div);
             window.print();
             document.body.removeChild(div);
+        };
+
+        window.imprimirRelatorios = function() {
+            const aba = document.getElementById('aba-relatorios');
+            if(!aba) return;
+            aba.classList.add('print-active-tab');
+            window.print();
+            aba.classList.remove('print-active-tab');
         };
         
         // Drag To scroll for the new matrix
@@ -1985,6 +2194,7 @@ setTimeout(window.inicializarNuvem, 1000);
             let dtIniStr = document.getElementById('relDataIni').value;
             let dtFimStr = document.getElementById('relDataFim').value;
             let filtroTraco = document.getElementById('relFiltroTraco').value;
+            let filtroUsina = localStorage.getItem('usina_unidade') || 'A375';
             
             let dtIni = dtIniStr ? new Date(dtIniStr + "T00:00:00") : null;
             let dtFim = dtFimStr ? new Date(dtFimStr + "T23:59:59") : null;
@@ -1994,7 +2204,8 @@ setTimeout(window.inicializarNuvem, 1000);
                 let dataNota = new Date(partes[2], partes[1] - 1, partes[0]);
                 let dentroPeriodo = (!dtIni || dataNota >= dtIni) && (!dtFim || dataNota <= dtFim);
                 let dentroTraco = (!filtroTraco || nota.traco === filtroTraco);
-                return dentroPeriodo && dentroTraco;
+                let dentroUsina = (filtroUsina === 'GERAL' || (nota.unidade || 'A375') === filtroUsina);
+                return dentroPeriodo && dentroTraco && dentroUsina;
             });
 
             let tVol = 0;
@@ -2026,10 +2237,13 @@ setTimeout(window.inicializarNuvem, 1000);
             
             document.getElementById('kpi-volume').innerHTML = fmt(tVol) + ' <span style="font-size:12px;">m³</span>';
             
-            // Atualiza KPIs dinâmicos se os IDs existirem no HTML
+            // Atualiza KPIs de Materiais (Garante limpeza se tVol for 0)
             MAT_DB.forEach(mat => {
                 const el = document.getElementById('kpi-' + mat.id);
-                if(el) el.innerHTML = fmt(totaisMateriais[mat.id]) + ` <span style="font-size:12px;">${mat.unit}</span>`;
+                if(el) {
+                    const totalMat = totaisMateriais[mat.id] || 0;
+                    el.innerHTML = fmt(totalMat) + ` <span style="font-size:12px;">${mat.unit}</span>`;
+                }
             });
 
             atualizarGraficos(prodDiaria, prodFrentes);
@@ -2144,7 +2358,7 @@ setTimeout(window.inicializarNuvem, 1000);
             // Atualizar Headers da Tabela
             const rowHeader = document.getElementById('row-header-materiais');
             if(rowHeader) {
-                rowHeader.innerHTML = '<th></th><th></th><th></th><th></th><th></th><th></th>'; // Placeholders para colunas iniciais
+                rowHeader.innerHTML = '<th>USINA</th><th></th><th></th><th></th><th></th><th></th><th></th>'; // Coluna USINA adicionada
                 MAT_DB.forEach(mat => {
                     const th = document.createElement('th');
                     th.innerText = mat.label.substring(0, 4).toUpperCase();
@@ -2157,9 +2371,17 @@ setTimeout(window.inicializarNuvem, 1000);
                     hDinamico.innerText = "MATERIAIS E CONSUMO (KG / L)";
                 }
             }
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
 
             Object.keys(TRACOS_DB).forEach(nome => {
                 let trac = TRACOS_DB[nome];
+                const unidadeTraco = trac.unidade; 
+                
+                // FILTRO REFORÇADO: 
+                // 1. Se estiver em modo GERAL, mostra tudo.
+                // 2. Se o traço NÃO tiver unidade (antigo), mostra em todas (até ser editado).
+                // 3. Se o traço TIVER unidade e for diferente da atual, ESCONDE.
+                if (unidadeAtual !== 'GERAL' && unidadeTraco && unidadeTraco !== unidadeAtual) return;
                 
                 let li = document.createElement('li');
                 let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
@@ -2191,9 +2413,16 @@ setTimeout(window.inicializarNuvem, 1000);
                         htmlMats += `<td>${fmt(trac[mat.id])}</td>`;
                     });
                     
+                    const uniTraco = trac.unidade || '---';
+                    const corUni = uniTraco === 'A369' ? '#b91c1c' : (uniTraco === 'A375' ? '#1e40af' : '#64748b');
+
                     tr.innerHTML = `
+                        <td style="font-size: 10px; font-weight: 800;"><span style="color: ${corUni}; padding: 2px 4px; border: 1px solid currentColor; border-radius: 4px;">${uniTraco}</span></td>
                         <td style="text-align: left; font-size:10px; font-weight:700;">${nome}</td>
-                        <td><button onclick="editarTraco('${nome}')" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">✏️ Editar</button></td>
+                        <td style="display: flex; gap: 4px;">
+                            <button onclick="editarTraco('${nome}')" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">✏️ Editar</button>
+                            <button onclick="excluirTraco('${nome}')" style="background:#fef2f2; border:1px solid #fee2e2; color:#ef4444; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">🗑️ Excluir</button>
+                        </td>
                         <td><span style="padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; background: ${ativo ? '#dcfce7' : '#fee2e2'}; color: ${ativo ? '#166534' : '#991b1b'}">${ativo ? 'ATIVO' : 'INATIVO'}</span></td>
                         <td style="color:#3b82f6;">${trac.fck || 0}</td>
                         <td style="font-size:10px;">${trac.slump_ini || 0}-${trac.slump_fim || 0}</td>
@@ -2386,9 +2615,26 @@ setTimeout(window.inicializarNuvem, 1000);
             }
         };
 
+        window.excluirTraco = async function(nome) {
+            let senha = await pedirSenha("Exclusão de TRAÇO! Digite a Senha Mestra:");
+            let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
+            if (senha !== senhaOficial && senha !== "ATERPA369") {
+                if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
+                return;
+            }
+            if(confirm("Confirma a EXCLUSÃO PERMANENTE do traço " + nome + "?")) {
+                delete TRACOS_DB[nome];
+                localStorage.setItem('usina_tracos', JSON.stringify(TRACOS_DB));
+                popularTracos();
+                alert("Traço removido com sucesso!");
+            }
+        };
+
         window.editarTraco = function(nome) {
             let trac = TRACOS_DB[nome];
             if (!trac) return;
+            
+            estado.tracoEmEdicao = nome;
             
             document.getElementById('nvNome').value = nome;
             document.getElementById('nvAtivo').value = trac.hasOwnProperty('ativo') ? trac.ativo + "" : "true";
@@ -2440,6 +2686,9 @@ setTimeout(window.inicializarNuvem, 1000);
         };
 
         window.salvarTraco = async function() {
+            let nome = document.getElementById('nvNome').value.trim();
+            if(!nome) return alert("Digite um nome/código para o traço!");
+
             if (!estado.senhaLiberada) {
                 let senha = await pedirSenha("Digite a Autenticação Mestra de Segurança");
                 let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
@@ -2451,19 +2700,19 @@ setTimeout(window.inicializarNuvem, 1000);
                 }
                 estado.senhaLiberada = true;
             }
-
-            let nome = document.getElementById('nvNome').value.trim();
-            if(!nome) return alert("Digite um nome/código para o traço!");
             
             let p = (id) => parseFloat(document.getElementById(id).value) || 0;
 
+            const unidadeParaSalvar = localStorage.getItem('usina_unidade') || 'A375';
+            
             const novoTraco = {
                 fck: p('nvFck'), 
                 slump_ini: p('nvSlumpIni'), 
                 slump_fim: p('nvSlumpFim'), 
                 classe: document.getElementById('nvClasse').value.trim(), 
                 aplicacao: document.getElementById('nvAplicacao').value.trim(), 
-                ativo: document.getElementById('nvAtivo').value === 'true' 
+                ativo: document.getElementById('nvAtivo').value === 'true',
+                unidade: unidadeParaSalvar
             };
             
             MAT_DB.forEach(mat => {
@@ -2471,10 +2720,19 @@ setTimeout(window.inicializarNuvem, 1000);
                 if(el) novoTraco[mat.id] = parseFloat(el.value) || 0;
             });
 
+            // Lógica para evitar duplicidade: se o nome mudou, remove o antigo
+            if (estado.tracoEmEdicao && estado.tracoEmEdicao !== nome) {
+                delete TRACOS_DB[estado.tracoEmEdicao];
+            }
+
             TRACOS_DB[nome] = novoTraco;
 
             localStorage.setItem('usina_tracos', JSON.stringify(TRACOS_DB));
-            alert("Traço " + nome + " salvo localmente com sucesso!");
+            alert(`Sucesso! Traço "${nome}" salvo e vinculado à ${unidadeParaSalvar}.`);
+            
+            // Resetar estado de edição
+            estado.tracoEmEdicao = null;
+            
             let btn = document.getElementById('btnSalvarTraco');
             btn.innerText = "Cadastrar no Sistema";
             btn.style.background = "linear-gradient(135deg, #3b82f6, #2563eb)";
@@ -2495,6 +2753,58 @@ setTimeout(window.inicializarNuvem, 1000);
             popularTracos();
             popularFrota();
         }
+
+        window.exportarTracosExcel = function() {
+            let csv = 'USINA;NOME;STATUS;FCK;SLUMP;CLASSE;';
+            MAT_DB.forEach(m => csv += m.label + ';');
+            csv += '\n';
+            
+            Object.keys(TRACOS_DB).forEach(nome => {
+                let t = TRACOS_DB[nome];
+                let ativoStatus = t.hasOwnProperty('ativo') ? t.ativo : true;
+                csv += `${t.unidade || '---'};${nome};${ativoStatus ? 'ATIVO' : 'INATIVO'};${t.fck || 0};${t.slump_ini || 0}-${t.slump_fim || 0};${t.classe || ''};`;
+                MAT_DB.forEach(m => csv += (t[m.id] || 0).toString().replace('.', ',') + ';');
+                csv += '\n';
+            });
+            
+            let blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            let url = URL.createObjectURL(blob);
+            let link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Traços_Usina_" + (localStorage.getItem('usina_unidade') || 'Geral') + ".csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        window.exportarRecebimentoExcel = function() {
+            const historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            const busca = (document.getElementById('buscaRecebimento')?.value || "").toLowerCase();
+
+            let csv = 'DATA;USINA;NOTA FISCAL;SILO;BRUTO (KG);TARA (KG);LIQUIDO (KG)\n';
+            
+            historico.forEach(rec => {
+                const uniRec = rec.unidade || 'A369';
+                const dataFmt = rec.data.split('-').reverse().join('/');
+                
+                // Filtros (Mesma lógica da tabela)
+                if (unidadeAtual !== 'GERAL' && uniRec !== unidadeAtual) return;
+                const matchesBusca = !busca || rec.nf.toString().toLowerCase().includes(busca) || rec.silo.toLowerCase().includes(busca) || dataFmt.includes(busca);
+                if (!matchesBusca) return;
+
+                csv += `${dataFmt};${uniRec};${rec.nf};${rec.silo};${rec.bruto || 0};${rec.tara || 0};${rec.liquido || 0}\n`;
+            });
+            
+            let blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            let url = URL.createObjectURL(blob);
+            let link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Recebimento_Cimento_" + (localStorage.getItem('usina_unidade') || 'Geral') + ".csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
 
         window.buscarSegundaVia = function() {
             try {
@@ -2630,10 +2940,10 @@ setTimeout(window.inicializarNuvem, 1000);
             const printSection = document.getElementById('print-section');
             const conteudoOriginal = printSection.innerHTML;
             printSection.innerHTML = preview.innerHTML;
-            printSection.style.display = 'block';
+            printSection.classList.add('active');
             window.print();
             printSection.innerHTML = conteudoOriginal;
-            printSection.style.display = '';
+            printSection.classList.remove('active');
         };
 
         function recalcular() {
@@ -2864,75 +3174,41 @@ setTimeout(window.inicializarNuvem, 1000);
                 console.error("Erro ao gerar prévia da nota:", err);
             }
         };
-
-        window.calcularUmidBalanca = function(material) {
-            const idMap = {
-                areia: ['balAreiaUmido', 'balAreiaSeco', 'balAreiaTara', 'umidAreia', 'balAreiaAgua'],
-                brita0: ['balBrita0Umido', 'balBrita0Seco', 'balBrita0Tara', 'umidBrita0', 'balBrita0Agua'],
-                brita1: ['balBrita1Umido', 'balBrita1Seco', 'balBrita1Tara', 'umidBrita1', 'balBrita1Agua']
-            };
-            const [uId, sId, tId, targetId, aguaId] = idMap[material];
-            const umido = parseFloat(document.getElementById(uId).value);
-            const seco = parseFloat(document.getElementById(sId).value);
-            const tara = parseFloat(document.getElementById(tId).value || 0);
-
-            if (!isNaN(umido) && !isNaN(seco)) {
-                // Cálculo da Água Percorrida (Peso - Peso)
-                const pesoAgua = umido - seco;
-                document.getElementById(aguaId).innerText = pesoAgua.toFixed(1) + "g";
-
-                if ((seco - tara) > 0) {
-                    const percent = (pesoAgua / (seco - tara)) * 100;
-                    const inputPrincipal = document.getElementById(targetId);
-                    inputPrincipal.value = percent.toFixed(1);
-                    inputPrincipal.setAttribute('data-valor-real', percent);
-                    window.salvarUmidade();
-                }
-            } else {
-                document.getElementById(aguaId).innerText = "-";
-            }
-        };
-
-        window.popularCamposUmidade = function() {
-            const container = document.getElementById('container-umidade-manual');
-            if(!container) return;
-            container.innerHTML = '';
-            
+        
+        window.carregarUmidadesSalvas = function() {
             const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
-            
             MAT_DB.forEach(mat => {
                 if(mat.type === 'aggregate') {
-                    const div = document.createElement('div');
-                    div.style = "background: white; padding: 12px 18px; border-radius: 10px; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: space-between; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);";
-                    div.innerHTML = `
-                        <div style="font-weight: 800; color: #1e293b; font-size: 13px; flex: 1;">${mat.label}</div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <input type="number" id="umid_${mat.id}" value="${umidsSalvas[mat.id] || 0}" step="0.1" class="form-input" style="width: 80px; text-align: center; font-weight: 800; color: #3b82f6;" oninput="window.salvarUmidade()">
-                            <span style="font-weight: bold; color: #64748b; font-size: 14px;">%</span>
-                        </div>
-                    `;
-                    container.appendChild(div);
+                    const el = document.getElementById('umid_' + mat.id);
+                    if(el) el.value = umidsSalvas[mat.id] || 0;
                 }
             });
         };
+
+
 
         window.popularCamposPesagem = function() {
             const container = document.getElementById('container-umidade-dinamica');
             if(!container) return;
             container.innerHTML = '';
             
+            const pesosSalvos = JSON.parse(localStorage.getItem('usina_umidade_pesos') || '{}');
+            
             MAT_DB.forEach(mat => {
                 if(mat.type === 'aggregate') {
+                    const p = pesosSalvos[mat.id] || { umido: '', seco: '', tara: 0, abs: '' };
+                    const pesoAgua = (p.umido && p.seco) ? (parseFloat(p.umido) - parseFloat(p.seco)).toFixed(1) : '-';
+                    
                     const div = document.createElement('div');
                     div.style = "background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);";
                     div.innerHTML = `
                         <div style="font-weight: 800; color: #1e293b; margin-bottom: 12px; font-size: 14px; border-bottom: 2px solid #3b82f6; width: fit-content; padding-bottom: 4px;">${mat.label}</div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 8px;">
-                            <div><label style="font-size:10px; font-weight:700; color:#64748b; display:block; margin-bottom:3px;">Úmido (g)</label><input type="number" id="bal_${mat.id}_umido" class="form-input" style="padding:5px; font-size:12px; font-weight:700;" oninput="calcularUmidBalanca('${mat.id}')"></div>
-                            <div><label style="font-size:10px; font-weight:700; color:#64748b; display:block; margin-bottom:3px;">Seco (g)</label><input type="number" id="bal_${mat.id}_seco" class="form-input" style="padding:5px; font-size:12px; font-weight:700;" oninput="calcularUmidBalanca('${mat.id}')"></div>
-                            <div><label style="font-size:10px; font-weight:700; color:#64748b; display:block; margin-bottom:3px;">Tara (g)</label><input type="number" id="bal_${mat.id}_tara" class="form-input" style="padding:5px; font-size:12px; font-weight:700;" oninput="calcularUmidBalanca('${mat.id}')" value="0"></div>
-                            <div><label style="font-size:10px; font-weight:700; color:#2563eb; display:block; margin-bottom:3px;">Água (g)</label><div id="bal_${mat.id}_agua" style="padding:5px; font-weight:800; color:#2563eb; font-size:12px;">-</div></div>
-                            <div><label style="font-size:10px; font-weight:700; color:#1e293b; display:block; margin-bottom:3px;">Abs (%)</label><input type="number" id="bal_${mat.id}_abs" class="form-input" style="padding:5px; font-size:12px;" step="0.01"></div>
+                            <div><label style="font-size:10px; font-weight:700; color:#64748b; display:block; margin-bottom:3px;">Úmido (g)</label><input type="number" id="bal_${mat.id}_umido" value="${p.umido}" class="form-input" style="padding:5px; font-size:12px; font-weight:700;" oninput="calcularUmidBalanca('${mat.id}')"></div>
+                            <div><label style="font-size:10px; font-weight:700; color:#64748b; display:block; margin-bottom:3px;">Seco (g)</label><input type="number" id="bal_${mat.id}_seco" value="${p.seco}" class="form-input" style="padding:5px; font-size:12px; font-weight:700;" oninput="calcularUmidBalanca('${mat.id}')"></div>
+                            <div><label style="font-size:10px; font-weight:700; color:#64748b; display:block; margin-bottom:3px;">Tara (g)</label><input type="number" id="bal_${mat.id}_tara" value="${p.tara}" class="form-input" style="padding:5px; font-size:12px; font-weight:700;" oninput="calcularUmidBalanca('${mat.id}')"></div>
+                            <div><label style="font-size:10px; font-weight:700; color:#2563eb; display:block; margin-bottom:3px;">Água (g)</label><div id="bal_${mat.id}_agua" style="padding:5px; font-weight:800; color:#2563eb; font-size:12px;">${pesoAgua === '-' ? '-' : pesoAgua + 'g'}</div></div>
+                            <div><label style="font-size:10px; font-weight:700; color:#1e293b; display:block; margin-bottom:3px;">Abs (%)</label><input type="number" id="bal_${mat.id}_abs" value="${p.abs}" class="form-input" style="padding:5px; font-size:12px;" step="0.01" oninput="calcularUmidBalanca('${mat.id}')"></div>
                         </div>
                     `;
                     container.appendChild(div);
@@ -2944,8 +3220,14 @@ setTimeout(window.inicializarNuvem, 1000);
             const umido = parseFloat(document.getElementById(`bal_${matId}_umido`).value);
             const seco = parseFloat(document.getElementById(`bal_${matId}_seco`).value);
             const tara = parseFloat(document.getElementById(`bal_${matId}_tara`).value) || 0;
+            const abs = document.getElementById(`bal_${matId}_abs`).value;
             const aguaId = `bal_${matId}_agua`;
             const targetId = `umid_${matId}`;
+
+            // Salva pesos no localStorage
+            const pesos = JSON.parse(localStorage.getItem('usina_umidade_pesos') || '{}');
+            pesos[matId] = { umido: document.getElementById(`bal_${matId}_umido`).value, seco: document.getElementById(`bal_${matId}_seco`).value, tara, abs };
+            localStorage.setItem('usina_umidade_pesos', JSON.stringify(pesos));
 
             if (!isNaN(umido) && !isNaN(seco)) {
                 const pesoAgua = umido - seco;
@@ -3163,14 +3445,18 @@ setTimeout(window.inicializarNuvem, 1000);
             MAT_DB.forEach(mat => {
                 if(mat.type === 'aggregate') {
                     const umid = (parseFloat(umidsSalvas[mat.id]) || 0);
+                    const pesos = JSON.parse(localStorage.getItem('usina_umidade_pesos') || '{}');
+                    const p = pesos[mat.id] || { umido: '-', seco: '-', tara: '-', abs: '-' };
+                    const aguaG = (p.umido !== '-' && p.seco !== '-') ? (parseFloat(p.umido) - parseFloat(p.seco)).toFixed(1) : '-';
+
                     rowsPesos += `
                         <tr>
                             <td style="font-weight: bold;">${mat.label.toUpperCase()}</td>
-                            <td>-</td>
-                            <td>0</td>
-                            <td>-</td>
-                            <td>-</td>
-                            <td>-</td>
+                            <td>${p.umido}</td>
+                            <td>${p.seco}</td>
+                            <td>${p.tara}</td>
+                            <td>${aguaG}</td>
+                            <td>${p.abs}</td>
                             <td>${umid.toFixed(1)}</td>
                         </tr>
                     `;
@@ -3258,7 +3544,9 @@ setTimeout(window.inicializarNuvem, 1000);
             }
 
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            if (hist.some(nota => nota.nf === nfInput)) {
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+            
+            if (hist.some(nota => nota.nf === nfInput && nota.unidade === unidadeAtual)) {
                 let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
                 let senhaNormal = localStorage.getItem('usina_senha_acesso') || "1988";
                 let senha = await pedirSenha(`A Nota Fiscal ${nfInput} já consta no Histórico!\nDigite a senha para MODIFICAR:`);
@@ -3606,9 +3894,6 @@ setTimeout(window.inicializarNuvem, 1000);
 
 
         <div class="box">
-            <div style="padding: 6px 8px; font-size: 11px;">
-                RECEBI (EMOS) DE <span class="bold">CONSTRUTORA ATERPA</span>, O SERVIÇO CONSTANTE NESTE DOCUMENTO.
-            </div>
             <div class="row" style="border-top: 1px solid #000; min-height: 48px;">
                 <div class="col" style="flex: 1.2; border-right: 1px solid #000; padding: 4px 5px;"><div class="label">DATA DO RECEBIMENTO</div><div class="value" id="p_data_recebimento" style="font-weight: normal; font-size: 12px; min-height: 18px; margin-top: 4px;"></div></div>
                 <div class="col" style="flex: 4.8; border-right: 1px solid #000; padding: 4px 5px;"><div class="label">IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR</div><div class="value" style="min-height: 18px; margin-top: 4px;"></div></div>
@@ -3626,6 +3911,19 @@ setTimeout(window.inicializarNuvem, 1000);
 <script>
     window.usina_silos_db = JSON.parse(localStorage.getItem('usina_silos_db') || '{"Silo 1": 0, "Silo 2": 0}');
 
+    window.trocarUnidadeRapido = async function(novaUnidade) {
+        if (!novaUnidade) return;
+        localStorage.setItem('usina_unidade', novaUnidade);
+        
+        // Atualiza a URL com o HASH para que ao recarregar a página saiba qual usina usar
+        const url = new URL(window.location.href);
+        url.hash = novaUnidade;
+        window.location.href = url.href; 
+        
+        // Força o recarregamento total para aplicar a nova unidade e atualizar todas as abas (como Recebimento)
+        window.location.reload();
+    };
+
     window.atualizarSilosUI = function() {
         let fmt = (val) => val.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1});
         if(document.getElementById('visorSilo1')) document.getElementById('visorSilo1').innerHTML = fmt(window.usina_silos_db['Silo 1'] || 0) + ' <span style="font-size: 11px; color: #94a3b8;">KG</span>';
@@ -3636,24 +3934,281 @@ setTimeout(window.inicializarNuvem, 1000);
         if (window.dbAtualizarEstoqueSilos) window.dbAtualizarEstoqueSilos();
     };
 
-    window.abastecerSilo = function(silo) {
-        let qtdStr = prompt(`Quantos KGs de cimento quer abastecer no ${silo}? \n(Você também pode digitar valores como -1000 se quiser ajustar o estoque pra baixo manualmente)`);
-        if(!qtdStr) return;
-        let qtd = parseFloat(qtdStr.replace(',', '.'));
+    window.abastecerSilo = function(silo, qtdForcada) {
+        let qtd;
+        if (qtdForcada !== undefined && qtdForcada !== null) {
+            qtd = parseFloat(qtdForcada);
+        } else {
+            let qtdStr = prompt(`Quantos KGs de cimento quer abastecer no ${silo}? \n(Você também pode digitar valores como -1000 se quiser ajustar o estoque pra baixo manualmente)`);
+            if(!qtdStr) return;
+            qtd = parseFloat(qtdStr.replace(',', '.'));
+        }
+
         if(isNaN(qtd)) return alert("Quantidade inválida! Digite apenas números.");
         
         window.usina_silos_db[silo] = (window.usina_silos_db[silo] || 0) + qtd;
         atualizarSilosUI();
-        alert(`${silo} abastecido com sucesso e saldo atualizado!`);
+        if (!window._is_recebimento_modal) alert(`${silo} abastecido com sucesso e saldo atualizado!`);
     };
+
+    window.abrirModalRecebimento = function(silo) {
+        window._rec_edit_index = null;
+        document.getElementById('titulo-modal-abastecimento').innerText = 'Abastecer ' + silo;
+        document.getElementById('rec-silo-alvo').value = silo;
+        document.getElementById('rec-data').value = new Date().toISOString().split('T')[0];
+        document.getElementById('rec-nf').value = '';
+        document.getElementById('rec-bruto').value = '';
+        document.getElementById('rec-tara').value = '';
+        window.calcularLiquidoRecebimento();
+        document.getElementById('modal-abastecimento-detalhado').style.display = 'flex';
+    };
+
+    window.abrirEdicaoRecebimento = function(index) {
+        const historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
+        const rec = historico[index];
+        if (!rec) return;
+        window._rec_edit_index = index;
+        document.getElementById('titulo-modal-abastecimento').innerText = 'Corrigir Recebimento: ' + rec.nf;
+        document.getElementById('rec-silo-alvo').value = rec.silo;
+        document.getElementById('rec-data').value = rec.data;
+        document.getElementById('rec-nf').value = rec.nf;
+        document.getElementById('rec-bruto').value = rec.bruto;
+        document.getElementById('rec-tara').value = rec.tara;
+        window.calcularLiquidoRecebimento();
+        document.getElementById('modal-abastecimento-detalhado').style.display = 'flex';
+    };
+
+    window.fecharModalRecebimento = function() {
+        document.getElementById('modal-abastecimento-detalhado').style.display = 'none';
+    };
+
+    window.zerarSilo = function(silo) {
+        const saldoAtual = window.usina_silos_db[silo] || 0;
+        if (saldoAtual === 0) return alert("O silo já está zerado!");
+        if (!confirm(`Deseja realmente ZERAR o estoque do ${silo}?`)) return;
+        
+        // Zera o saldo no banco/estado
+        window._is_recebimento_modal = true;
+        window.abastecerSilo(silo, -saldoAtual);
+        window._is_recebimento_modal = false;
+        
+        // Não adicionamos ao histórico conforme pedido
+        alert(`${silo} zerado com sucesso!`);
+        window.renderizarHistoricoCimento();
+    };
+
+    window.calcularLiquidoRecebimento = function() {
+        const bruto = parseFloat(document.getElementById('rec-bruto').value) || 0;
+        const tara = parseFloat(document.getElementById('rec-tara').value) || 0;
+        const liquido = bruto - tara;
+        document.getElementById('rec-liquido-visor').innerHTML = liquido.toLocaleString('pt-BR') + ' <span style="font-size: 12px;">KG</span>';
+        return liquido;
+    };
+
+    window.confirmarRecebimentoCimento = async function() {
+        const silo = document.getElementById('rec-silo-alvo').value;
+        const data = document.getElementById('rec-data').value;
+        const nf = document.getElementById('rec-nf').value;
+        const bruto = parseFloat(document.getElementById('rec-bruto').value) || 0;
+        const tara = parseFloat(document.getElementById('rec-tara').value) || 0;
+        const liquido = bruto - tara;
+        if (liquido <= 0) return alert("O peso líquido deve ser maior que zero!");
+        if (!nf) return alert("Informe o número da nota fiscal.");
+
+        if (window._rec_edit_index !== null && window._rec_edit_index !== undefined) {
+            let historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
+            const oldRec = historico[window._rec_edit_index];
+            const diff = liquido - oldRec.liquido;
+            window._is_recebimento_modal = true;
+            window.abastecerSilo(silo, diff);
+            window._is_recebimento_modal = false;
+            historico[window._rec_edit_index] = { ...oldRec, data, nf, silo, bruto, tara, liquido };
+            localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(historico));
+            if (window.dbSalvarConfiguracoes) await window.dbSalvarConfiguracoes('recebimentos_cimento', historico);
+            window._rec_edit_index = null;
+            alert("Recebimento corrigido e estoque ajustado!");
+        } else {
+            window._is_recebimento_modal = true;
+            window.abastecerSilo(silo, liquido);
+            window._is_recebimento_modal = false;
+            let historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
+            historico.unshift({ data, nf, silo, bruto, tara, liquido, timestamp: Date.now() });
+            localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(historico));
+            if (window.dbSalvarConfiguracoes) await window.dbSalvarConfiguracoes('recebimentos_cimento', historico);
+            alert(`${silo} abastecido com sucesso!`);
+        }
+        window.fecharModalRecebimento();
+        window.renderizarHistoricoCimento();
+    };
+
+    window.renderizarHistoricoCimento = function() {
+        const historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
+        const container = document.getElementById('tbodyRecebimentos');
+        if (!container) return;
+        container.innerHTML = historico.map((rec, index) => {
+            // Filtro de Usina no Recebimento
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            const uniRec = rec.unidade || 'A369';
+            if (unidadeAtual !== 'GERAL' && uniRec !== unidadeAtual) return '';
+
+            // FILTRO DE BUSCA
+            const busca = (document.getElementById('buscaRecebimento')?.value || "").toLowerCase();
+            const dataFmt = rec.data.split('-').reverse().join('/');
+            const matchesBusca = !busca || 
+                                 rec.nf.toString().toLowerCase().includes(busca) || 
+                                 rec.silo.toLowerCase().includes(busca) || 
+                                 dataFmt.includes(busca);
+            
+            if (!matchesBusca) return '';
+
+            return `
+            <tr style="border-bottom: 1px solid #f1f5f9; hover: background: #f8fafc;">
+                <td style="padding: 12px 15px; font-size: 13px; color: #1e293b;">${rec.data.split('-').reverse().join('/')}</td>
+                <td style="padding: 12px 15px; font-size: 11px; font-weight: 800;"><span style="background: ${uniRec === 'A369' ? '#fef2f2' : '#eff6ff'}; color: ${uniRec === 'A369' ? '#991b1b' : '#1e40af'}; padding: 2px 6px; border-radius: 4px; border: 1px solid currentColor;">${uniRec}</span></td>
+                <td style="padding: 12px 15px; font-size: 13px; font-weight: 600; color: #1e293b;">${rec.nf}</td>
+                <td style="padding: 12px 15px; font-size: 13px;"><span style="background: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; font-weight: bold;">${rec.silo}</span></td>
+                <td style="padding: 12px 15px; font-size: 13px; color: #64748b;">${(rec.bruto || 0).toLocaleString('pt-BR')} kg</td>
+                <td style="padding: 12px 15px; font-size: 13px; color: #64748b;">${(rec.tara || 0).toLocaleString('pt-BR')} kg</td>
+                <td style="padding: 12px 15px; font-size: 13px; font-weight: 700; color: #10b981;">${(rec.liquido || 0).toLocaleString('pt-BR')} kg</td>
+                <td style="padding: 12px 15px; text-align: right; display: flex; gap: 8px; justify-content: flex-end;">
+                    <button onclick="window.abrirEdicaoRecebimento(${index})" style="background: none; border: none; color: #3b82f6; cursor: pointer; font-size: 16px;" title="Corrigir">✏️</button>
+                    <button onclick="window.excluirRecebimento(${index})" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 18px;" title="Excluir">&times;</button>
+                </td>
+            </tr>
+        `}).join('');
+        if (historico.length === 0) container.innerHTML = '<tr><td colspan="7" style="padding: 40px; text-align: center; color: #94a3b8;">Nenhum recebimento registrado.</td></tr>';
+    };
+
+    window.excluirRecebimento = async function(index) {
+        if (!confirm("Deseja excluir este registro? Isso NÃO alterará o saldo atual do silo.")) return;
+        let historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
+        historico.splice(index, 1);
+        localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(historico));
+        if (window.dbSalvarConfiguracoes) await window.dbSalvarConfiguracoes('recebimentos_cimento', historico);
+        window.renderizarHistoricoCimento();
+    };
+
+    // Aba Recebimento de Cimento
+    const cementAbaHTML = `
+    <main id="aba-recebimento-cimento" class="main-content" style="display: none; padding: 25px; background: #f8fafc; overflow-y: auto;">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+                <div>
+                    <h2 style="color: #0f172a; font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 12px; margin: 0;">
+                        🚚 Histórico de Recebimento de Cimento
+                    </h2>
+                    <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Controle de entrada de material nos silos e pesagens de balança.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; background: white; padding: 10px 15px; border-radius: 12px; border: 1px solid #e2e8f0; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
+                    <span style="font-size: 18px;">🔍</span>
+                    <input type="text" id="buscaRecebimento" oninput="window.renderizarHistoricoCimento()" placeholder="Buscar por NF, Silo ou Data..." style="width: 100%; padding: 5px; border: none; outline: none; font-size: 14px; color: #1e293b;">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="exportarRecebimentoExcel()" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">📥 Exportar Excel</button>
+                    <button onclick="document.getElementById('modalRecebimento').style.display='flex'" style="background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">+ Novo Recebimento</button>
+                </div>
+            </div>
+
+            <div style="background: white; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.02); overflow: hidden;">
+                <table class="materials-table" style="margin-bottom: 0; width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>DATA</th>
+                            <th>USINA</th>
+                            <th>NF</th>
+                            <th>SILO</th>
+                            <th>BRUTO (KG)</th>
+                            <th>TARA (KG)</th>
+                            <th>LÍQUIDO (KG)</th>
+                            <th>AÇÕES</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyRecebimentos">
+                        <!-- Injetado por JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>`;
+    
+    const modalRecebimentoHTML = `
+    <div id="modal-abastecimento-detalhado" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.8); z-index:999999; justify-content:center; align-items:center; backdrop-filter: blur(4px);">
+        <div style="background:white; padding:30px; border-radius:20px; width:450px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); border:1px solid #e2e8f0;">
+            <h2 id="titulo-modal-abastecimento" style="margin:0 0 20px 0; color:#1e293b; font-size:20px; font-weight:800; display:flex; align-items:center; gap:10px;">🏗️ Abastecer Silo</h2>
+            
+            <input type="hidden" id="rec-silo-alvo">
+            
+            <div style="display:flex; flex-direction:column; gap:15px;">
+                <div class="form-group">
+                    <label style="font-size:12px; font-weight:700; color:#64748b; margin-bottom:5px;">DATA DO RECEBIMENTO</label>
+                    <input type="date" id="rec-data" class="form-input" style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:8px;">
+                </div>
+                <div class="form-group">
+                    <label style="font-size:12px; font-weight:700; color:#64748b; margin-bottom:5px;">Nº NOTA FISCAL</label>
+                    <input type="text" id="rec-nf" placeholder="Ex: 12345" class="form-input" style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:8px; font-weight:bold;">
+                </div>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
+                    <div class="form-group">
+                        <label style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px;">PESO BRUTO (KG)</label>
+                        <input type="number" id="rec-bruto" class="form-input" style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:8px;" oninput="window.calcularLiquidoRecebimento()">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:5px;">PESO TARA (KG)</label>
+                        <input type="number" id="rec-tara" class="form-input" style="background:#f8fafc; border:1px solid #cbd5e1; padding:10px; border-radius:8px;" oninput="window.calcularLiquidoRecebimento()">
+                    </div>
+                </div>
+                
+                <div style="background:#eff6ff; padding:15px; border-radius:12px; text-align:center; border:1px solid #bfdbfe;">
+                    <div style="font-size:11px; font-weight:700; color:#1e40af; text-transform:uppercase;">Peso Líquido Calculado</div>
+                    <div id="rec-liquido-visor" style="font-size:24px; font-weight:900; color:#1d4ed8; margin-top:5px;">0 <span style="font-size:12px;">KG</span></div>
+                </div>
+                
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button onclick="window.fecharModalRecebimento()" style="flex:1; background:#f1f5f9; color:#475569; border:none; padding:12px; border-radius:10px; font-weight:700; cursor:pointer;">Cancelar</button>
+                    <button onclick="window.confirmarRecebimentoCimento()" style="flex:2; background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; border:none; padding:12px; border-radius:10px; font-weight:700; cursor:pointer; box-shadow:0 4px 12px rgba(37,99,235,0.2);">Confirmar Entrada</button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', cementAbaHTML);
+    document.body.insertAdjacentHTML('beforeend', modalRecebimentoHTML);
+
 
     // Auto-carregar UI do Silo no inicio
     document.addEventListener("DOMContentLoaded", async function() {
+        // PRIORIDADE 1: Hash na URL (#A369, #A375, #GERAL)
+        // PRIORIDADE 2: LocalStorage
+        let unidadeAlvo = window.location.hash.replace('#', '').toUpperCase();
+        if (!['A369', 'A375', 'GERAL'].includes(unidadeAlvo)) {
+            unidadeAlvo = localStorage.getItem('usina_unidade') || 'A369';
+        } else {
+            localStorage.setItem('usina_unidade', unidadeAlvo);
+        }
+
+        const selectRapido = document.getElementById('select-unidade-rapido');
+        if (selectRapido) selectRapido.value = unidadeAlvo;
+        
+        const displayFixo = document.getElementById('display-unidade-fixa');
+        if (displayFixo) displayFixo.innerText = "USINA " + unidadeAlvo;
+
+        // Força o título correto logo no início
+        const tituloHistorico = document.querySelector('.main-content h2') || document.querySelector('h1');
+        if (tituloHistorico && !tituloHistorico.innerText.includes('Recebimento')) {
+            tituloHistorico.innerText = "Histórico de Produção - " + (unidadeAlvo === 'GERAL' ? 'TODAS AS USINAS' : unidadeAlvo);
+        }
+
         // Tenta baixar da nuvem primeiro para espelhar
         if (window.dbBaixarEstoqueSilos) {
             const cloudData = await window.dbBaixarEstoqueSilos();
             if (cloudData) window.usina_silos_db = cloudData;
         }
+        
+        if (window.dbBaixarHistoricoDaNuvem) {
+            await window.dbBaixarHistoricoDaNuvem();
+        }
+        
         atualizarSilosUI();
         
         // Auto-sugestão da próxima NF baseada no histórico
