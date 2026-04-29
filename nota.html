@@ -187,18 +187,21 @@ window.dbSincronizarTudoLocalParaNuvem = async () => {
             } catch (e) { falhas++; }
         }
 
-        // 2. SINCRONIZAÇÃO DE CONFIGURAÇÕES (Traços, Frota, etc)
+        // 2. SINCRONIZAÇÃO DE CONFIGURAÇÕES (Traços, Frota, etc) - ISOLADAS POR UNIDADE
         const configsParaSync = [
-            { id: 'tracos', key: 'usina_tracos' },
-            { id: 'frota', key: 'usina_frota' },
-            { id: 'motoristas', key: 'usina_motoristas' },
-            { id: 'recebimentos_cimento', key: 'usina_recebimentos_cimento' },
-            { id: 'materiais', key: 'usina_materiais' }
+            { tipo: 'tracos', id: `tracos_${unidadeAtual}`, key: `usina_tracos_${unidadeAtual}` },
+            { tipo: 'frota', id: `frota_${unidadeAtual}`, key: `usina_frota_${unidadeAtual}` },
+            { tipo: 'motoristas', id: `motoristas_${unidadeAtual}`, key: `usina_motoristas_${unidadeAtual}` },
+            { tipo: 'recebimentos_cimento', id: `recebimentos_cimento_${unidadeAtual}`, key: `usina_recebimentos_cimento_${unidadeAtual}` },
+            { tipo: 'materiais', id: `materiais_${unidadeAtual}`, key: `usina_materiais_${unidadeAtual}` }
         ];
 
         for (const config of configsParaSync) {
-            const dadosLocais = JSON.parse(localStorage.getItem(config.key) || (config.id === 'tracos' ? '{}' : '[]'));
-            await window.dbSalvarConfiguracoes(config.id, dadosLocais);
+            const dadosLocais = JSON.parse(localStorage.getItem(config.key) || (config.tipo === 'tracos' ? '{}' : '[]'));
+            // SÓ SOBE SE TIVER DADOS
+            if (dadosLocais && (Array.isArray(dadosLocais) ? dadosLocais.length > 0 : Object.keys(dadosLocais).length > 0)) {
+                await window.dbSalvarConfiguracoes(config.id, dadosLocais);
+            }
         }
 
         // 3. ESPELHAMENTO: Deletar da nuvem o que não existe mais localmente (para esta unidade)
@@ -427,13 +430,17 @@ window.inicializarNuvem = async () => {
             const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
             // SÓ SOBRESCREVE SE TIVER DADOS REAIS NA NUVEM
             if (dadosNuvem && (Array.isArray(dadosNuvem) ? dadosNuvem.length > 0 : Object.keys(dadosNuvem).length > 0)) {
-                if (config.id === 'tracos') { 
+                
+                // Aplicar dados baixados às variáveis globais e localStorage
+                localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
+
+                if (config.id.startsWith('tracos')) { 
                     // MESCLAGEM INTELIGENTE: Se o traço na nuvem estiver zerado, pega o peso do padrão de fábrica
                     Object.keys(dadosNuvem).forEach(nome => {
                         const tracoNuvem = dadosNuvem[nome];
                         const tracoPadrao = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
                         
-                        if (tracoPadrao) {
+                        if (tracoPadrao && tracoNuvem) {
                             if (!tracoNuvem.cimento || tracoNuvem.cimento === 0 || tracoNuvem.cimento === "0") {
                                 Object.assign(tracoNuvem, tracoPadrao);
                             }
@@ -443,12 +450,10 @@ window.inicializarNuvem = async () => {
                     if(window.popularTracos) popularTracos(); 
                 }
                 
-                localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
-                
-                if (config.id === 'frota') { window.FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
-                if (config.id === 'motoristas') { window.MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
-                if (config.id === 'recebimentos_cimento') { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
-                if (config.id === 'materiais') { window.MAT_DB = dadosNuvem; if(window.popularBarraMateriais) popularBarraMateriais(); }
+                if (config.id.startsWith('frota')) { window.FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
+                if (config.id.startsWith('motoristas')) { window.MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
+                if (config.id.startsWith('recebimentos_cimento')) { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
+                if (config.id.startsWith('materiais')) { window.MAT_DB = dadosNuvem; if(window.popularBarraMateriais) popularBarraMateriais(); }
             } else {
                 console.log(`☁️ Mantendo dados locais para ${config.id} pois a nuvem retornou vazio.`);
             }
@@ -1360,7 +1365,20 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        // VARIÁVEIS DE BANCO DE DATA (ISOLADAS POR UNIDADE)
+        // --- REPARO DE EMERGÊNCIA (Executa antes de qualquer inicialização) ---
+        (function() {
+            const uniReparo = localStorage.getItem('usina_unidade') || 'A375';
+            const keysParaReparar = [`usina_tracos_${uniReparo}`, `usina_frota_${uniReparo}`, `usina_motoristas_${uniReparo}`, `usina_materiais_${uniReparo}`, 'usina_tracos', 'usina_frota', 'usina_motoristas', 'usina_materiais'];
+            keysParaReparar.forEach(k => {
+                const val = localStorage.getItem(k);
+                if (val && (val.includes('[object Object]') || val === 'undefined' || val === 'null')) {
+                    console.warn(`Reparando chave corrompida: ${k}`);
+                    localStorage.removeItem(k);
+                }
+            });
+        })();
+        // ----------------------------------------------------------------------
+
         const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
         
         let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
@@ -1396,6 +1414,12 @@ setTimeout(window.inicializarNuvem, 1000);
         };
 
         window.onload = function() {
+            // Sincroniza Unidade pelo HASH da URL se disponível
+            const hashUnidade = window.location.hash.replace('#', '').toUpperCase();
+            if (hashUnidade && ['A369', 'A375', 'GERAL'].includes(hashUnidade)) {
+                localStorage.setItem('usina_unidade', hashUnidade);
+            }
+
             const hoje = new Date();
             const dia = String(hoje.getDate()).padStart(2, '0');
             const mes = String(hoje.getMonth() + 1).padStart(2, '0');
@@ -1608,6 +1632,49 @@ setTimeout(window.inicializarNuvem, 1000);
             }
         };
 
+        // Mover a definição de mudarAba para antes de qualquer inicialização
+        window.mudarAba = async function(abaId, el) {
+            try {
+                let alvo = document.getElementById('aba-' + abaId);
+                if (!alvo) {
+                    alert("🚧 Página em construção! Esta aba será implementada em breve.");
+                    return;
+                }
+                
+                let abas = ['aba-emissao', 'aba-tracos', 'aba-frota', 'aba-historico', 'aba-relatorios', 'aba-umidade', 'aba-nota-preview', 'aba-segunda-via', 'aba-resumo', 'aba-recebimento-cimento'];
+                abas.forEach(id => {
+                    let domAba = document.getElementById(id);
+                    if(domAba) domAba.style.display = 'none';
+                });
+                
+                if (abaId === 'historico') carregarHistorico();
+                if (abaId === 'relatorios') {
+                    setupRelatorios();
+                    setTimeout(gerarRelatorio, 100);
+                }
+                if (abaId === 'nota-preview') window.atualizarPreviewNota();
+                if (abaId === 'resumo') setTimeout(carregarResumoDiario, 100);
+                if (abaId === 'recebimento-cimento') {
+                    if (window.dbCarregarConfiguracoes) {
+                        window.dbCarregarConfiguracoes(`recebimentos_cimento_${localStorage.getItem('usina_unidade') || 'A369'}`, []).then(globalHist => {
+                            localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(globalHist));
+                            window.renderizarHistoricoCimento();
+                        });
+                    }
+                    window.renderizarHistoricoCimento();
+                }
+                
+                alvo.style.display = 'flex';
+
+                if (el) {
+                    document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
+                    el.classList.add('active');
+                }
+            } catch (error) {
+                console.error("Erro ao mudar de aba:", error);
+            }
+        };
+
         window.pedirSenha = function(mensagem) {
             return new Promise((resolve) => {
                 const modal = document.createElement('div');
@@ -1645,46 +1712,6 @@ setTimeout(window.inicializarNuvem, 1000);
                     if (e.key === 'Escape') fechar(null);
                 };
             });
-        };
-
-        window.mudarAba = async function(abaId, el) {
-            // Caso especial: Gestão de Frota e configurações críticas podem exigir senha (atualmente livre para traços)
-
-            let alvo = document.getElementById('aba-' + abaId);
-            if (!alvo) {
-                alert("🚧 Página em construção! Esta aba será implementada em breve.");
-                return;
-            }
-            
-            let abas = ['aba-emissao', 'aba-tracos', 'aba-frota', 'aba-historico', 'aba-relatorios', 'aba-umidade', 'aba-nota-preview', 'aba-segunda-via', 'aba-resumo', 'aba-recebimento-cimento'];
-            abas.forEach(id => {
-                let domAba = document.getElementById(id);
-                if(domAba) domAba.style.display = 'none';
-            });
-            
-            if (abaId === 'historico') carregarHistorico();
-            if (abaId === 'relatorios') {
-                setupRelatorios();
-                setTimeout(gerarRelatorio, 100);
-            }
-            if (abaId === 'nota-preview') window.atualizarPreviewNota();
-            if (abaId === 'resumo') setTimeout(carregarResumoDiario, 100);
-            if (abaId === 'recebimento-cimento') {
-                if (window.dbCarregarConfiguracoes) {
-                    window.dbCarregarConfiguracoes('recebimentos_cimento', []).then(globalHist => {
-                        localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(globalHist));
-                        window.renderizarHistoricoCimento();
-                    });
-                }
-                window.renderizarHistoricoCimento();
-            }
-            
-            alvo.style.display = 'flex';
-
-            if (el) {
-                document.querySelectorAll('.menu a').forEach(a => a.classList.remove('active'));
-                el.classList.add('active');
-            }
         };
 
 
@@ -2294,6 +2321,7 @@ setTimeout(window.inicializarNuvem, 1000);
             let htmlB = '<tr>';
             
             MAT_DB.forEach(mat => {
+                if (!mat || !mat.label) return;
                 htmlH += `<th>${mat.label}</th>`;
                 htmlB += `<td id="top${mat.id.charAt(0).toUpperCase()}${mat.id.slice(1)}">0,00</td>`;
             });
@@ -2305,10 +2333,9 @@ setTimeout(window.inicializarNuvem, 1000);
             body.innerHTML = htmlB;
         };
 
-        function popularTracos() {
-
+        window.popularTracos = function() {
             let listaEmissao = document.getElementById('listaTracos');
-            listaEmissao.innerHTML = "";
+            if(listaEmissao) listaEmissao.innerHTML = "";
             
             let selectUmid = document.getElementById('selectTracoUmidade');
             if(selectUmid) selectUmid.innerHTML = '<option value="">Nenhum Selecionado</option>';
@@ -2321,6 +2348,7 @@ setTimeout(window.inicializarNuvem, 1000);
             if(rowHeader) {
                 rowHeader.innerHTML = '<th></th><th></th><th></th><th></th><th></th><th></th><th></th>'; // Placeholders para colunas iniciais
                 MAT_DB.forEach(mat => {
+                    if (!mat || !mat.label) return;
                     const th = document.createElement('th');
                     th.innerText = mat.label.substring(0, 4).toUpperCase();
                     th.title = mat.label;
@@ -2330,6 +2358,7 @@ setTimeout(window.inicializarNuvem, 1000);
 
             Object.keys(TRACOS_DB).forEach(nome => {
                 let trac = TRACOS_DB[nome];
+                if (!trac) return;
                 
                 // CORREÇÃO FINAL: Mostrar todos os traços em todas as usinas para evitar que sumam.
                 // A separação por usina só deve acontecer se você marcar o traço como inativo em uma delas.
@@ -2361,6 +2390,7 @@ setTimeout(window.inicializarNuvem, 1000);
                     
                     let htmlMats = '';
                     MAT_DB.forEach(mat => {
+                        if (!mat || !mat.id) return;
                         // BUSCA O VALOR NA NUVEM
                         let valor = trac[mat.id];
                         
@@ -2404,10 +2434,10 @@ setTimeout(window.inicializarNuvem, 1000);
 
         
         
-        function popularFrota() {
+        window.popularFrota = function() {
             // Emissão
-            let ulM = document.getElementById('listaMotoristas'); ulM.innerHTML = "";
-            let ulP = document.getElementById('listaPlacas'); ulP.innerHTML = "";
+            let ulM = document.getElementById('listaMotoristas'); if(ulM) ulM.innerHTML = "";
+            let ulP = document.getElementById('listaPlacas'); if(ulP) ulP.innerHTML = "";
             
             // Gerenciamento
             let tbM = document.getElementById('tbodyMotoristas'); if(tbM) tbM.innerHTML = "";
@@ -2567,12 +2597,11 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
-                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-                delete MOTORISTAS_DB[mat];
-                localStorage.setItem(`usina_motoristas_${unidadeAtual}`, JSON.stringify(MOTORISTAS_DB));
-                if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`motoristas_${unidadeAtual}`, MOTORISTAS_DB);
-                popularFrota();
-            }
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            delete MOTORISTAS_DB[mat];
+            localStorage.setItem(`usina_motoristas_${unidadeAtual}`, JSON.stringify(MOTORISTAS_DB));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`motoristas_${unidadeAtual}`, MOTORISTAS_DB);
+            popularFrota();
         };
 
         window.excluirVeiculo = async function(al) {
@@ -2582,12 +2611,11 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
-                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-                delete FROTA_DB[al];
-                localStorage.setItem(`usina_frota_${unidadeAtual}`, JSON.stringify(FROTA_DB));
-                if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`frota_${unidadeAtual}`, FROTA_DB);
-                popularFrota();
-            }
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            delete FROTA_DB[al];
+            localStorage.setItem(`usina_frota_${unidadeAtual}`, JSON.stringify(FROTA_DB));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`frota_${unidadeAtual}`, FROTA_DB);
+            popularFrota();
         };
 
         window.excluirTraco = async function(nome) {
@@ -2597,13 +2625,12 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
-                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-                delete TRACOS_DB[nome];
-                localStorage.setItem(`usina_tracos_${unidadeAtual}`, JSON.stringify(TRACOS_DB));
-                if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`tracos_${unidadeAtual}`, TRACOS_DB);
-                popularTracos();
-                alert("Traço removido com sucesso!");
-            }
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            delete TRACOS_DB[nome];
+            localStorage.setItem(`usina_tracos_${unidadeAtual}`, JSON.stringify(TRACOS_DB));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`tracos_${unidadeAtual}`, TRACOS_DB);
+            popularTracos();
+            alert("Traço removido com sucesso!");
         };
 
         window.editarTraco = function(nome) {
@@ -2895,8 +2922,9 @@ setTimeout(window.inicializarNuvem, 1000);
             printSection.classList.remove('active');
         };
 
-        function recalcular() {
+        window.recalcular = function() {
             try {
+                if(!window.TRACOS_DB) return;
                 const volume = parseFloat(document.getElementById('inputVolume').value) || 0;
                 const traco = TRACOS_DB[estado.tracoSelecionado];
                 if (!traco) return;
