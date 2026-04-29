@@ -463,16 +463,18 @@ window.inicializarNuvem = async () => {
 
 // LISTENER PARA SINCRONIZAÇÃO ENTRE ABAS
 window.addEventListener('storage', (event) => {
-    const keysToSync = ['usina_tracos', 'usina_frota', 'usina_motoristas', 'usina_recebimentos_cimento', 'usina_unidade'];
+    const uniAt = localStorage.getItem('usina_unidade') || 'A375';
+    const keysToSync = [`usina_tracos_${uniAt}`, `usina_frota_${uniAt}`, `usina_motoristas_${uniAt}`, `usina_recebimentos_cimento_${uniAt}`, 'usina_unidade'];
+    
     if (keysToSync.includes(event.key)) {
         console.log(`🔄 Sincronizando aba: ${event.key} alterado.`);
-        if (event.key === 'usina_tracos') {
-            TRACOS_DB = JSON.parse(event.newValue || '{}');
+        if (event.key === `usina_tracos_${uniAt}`) {
+            window.TRACOS_DB = JSON.parse(event.newValue || '{}');
             if(window.popularTracos) popularTracos();
         }
-        if (event.key === 'usina_frota' && window.popularFrota) popularFrota();
-        if (event.key === 'usina_motoristas' && window.popularFrota) popularFrota();
-        if (event.key === 'usina_recebimentos_cimento' && window.renderizarHistoricoCimento) renderizarHistoricoCimento();
+        if (event.key === `usina_frota_${uniAt}` && window.popularFrota) popularFrota();
+        if (event.key === `usina_motoristas_${uniAt}` && window.popularFrota) popularFrota();
+        if (event.key === `usina_recebimentos_cimento_${uniAt}` && window.renderizarHistoricoCimento) renderizarHistoricoCimento();
         if (event.key === 'usina_unidade') window.location.reload();
     }
 });
