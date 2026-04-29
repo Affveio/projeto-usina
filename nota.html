@@ -413,13 +413,14 @@ window.inicializarNuvem = async () => {
         // 1. Baixar Histórico de Notas
         await window.dbBaixarHistoricoDaNuvem();
         
-        // 2. Baixar Configurações (Traços, Frota, etc)
+        // 2. Baixar Configurações Isolas por Unidade (Evita que uma usina apague a outra)
+        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
         const configs = [
-            { id: 'tracos', key: 'usina_tracos' },
-            { id: 'frota', key: 'usina_frota' },
-            { id: 'motoristas', key: 'usina_motoristas' },
-            { id: 'recebimentos_cimento', key: 'usina_recebimentos_cimento' },
-            { id: 'materiais', key: 'usina_materiais' }
+            { id: `tracos_${unidadeAtual}`, key: `usina_tracos_${unidadeAtual}` },
+            { id: `frota_${unidadeAtual}`, key: `usina_frota_${unidadeAtual}` },
+            { id: `motoristas_${unidadeAtual}`, key: `usina_motoristas_${unidadeAtual}` },
+            { id: `recebimentos_cimento_${unidadeAtual}`, key: `usina_recebimentos_cimento_${unidadeAtual}` },
+            { id: `materiais_${unidadeAtual}`, key: `usina_materiais_${unidadeAtual}` }
         ];
 
         for (const config of configs) {
@@ -1359,8 +1360,10 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        // VARIÁVEIS DE BANCO DE DATA (GLOBAIS PARA SINCRONIZAÇÃO TOTAL)
-        let tracosSalvos = JSON.parse(localStorage.getItem('usina_tracos') || '{}');
+        // VARIÁVEIS DE BANCO DE DATA (ISOLADAS POR UNIDADE)
+        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+        
+        let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
         
         // SANITIZAÇÃO INICIAL: Garante que os traços locais não estejam zerados
         if (tracosSalvos && Object.keys(tracosSalvos).length > 0) {
@@ -1375,13 +1378,13 @@ setTimeout(window.inicializarNuvem, 1000);
 
         window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : TRACOS_DEFAULT;
 
-        let frotaSalva = JSON.parse(localStorage.getItem('usina_frota') || '{}');
+        let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
         window.FROTA_DB = (frotaSalva && Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
 
-        let motoristasSalvos = JSON.parse(localStorage.getItem('usina_motoristas') || '{}');
+        let motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
         window.MOTORISTAS_DB = (motoristasSalvos && Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
         
-        let materiaisSalvos = JSON.parse(localStorage.getItem('usina_materiais') || '[]');
+        let materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
         window.MAT_DB = (materiaisSalvos && materiaisSalvos.length > 0) ? materiaisSalvos : MATERIAIS_DEFAULT;
 
         let estado = {
@@ -2519,7 +2522,9 @@ setTimeout(window.inicializarNuvem, 1000);
             document.getElementById('nvMotNome').value = "";
             document.getElementById('btnMotorista').innerText = "Salvar";
             document.getElementById('btnMotorista').style.background = "linear-gradient(135deg, #3b82f6, #2563eb)";
-            localStorage.setItem('usina_motoristas', JSON.stringify(MOTORISTAS_DB));
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            localStorage.setItem(`usina_motoristas_${unidadeAtual}`, JSON.stringify(MOTORISTAS_DB));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`motoristas_${unidadeAtual}`, MOTORISTAS_DB);
             popularFrota();
         };
         
@@ -2550,7 +2555,9 @@ setTimeout(window.inicializarNuvem, 1000);
             let btn = document.getElementById('btnFrota');
             btn.innerText = "Salvar";
             btn.style.background = "linear-gradient(135deg, #3b82f6, #2563eb)";
-            localStorage.setItem('usina_frota', JSON.stringify(FROTA_DB));
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            localStorage.setItem(`usina_frota_${unidadeAtual}`, JSON.stringify(FROTA_DB));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`frota_${unidadeAtual}`, FROTA_DB);
             popularFrota();
         };
 
@@ -2573,9 +2580,10 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
-            if(confirm("Confirma a EXCLUSÃO PERMANENTE do motorista " + MOTORISTAS_DB[mat].nome + "?")) {
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
                 delete MOTORISTAS_DB[mat];
-                localStorage.setItem('usina_motoristas', JSON.stringify(MOTORISTAS_DB));
+                localStorage.setItem(`usina_motoristas_${unidadeAtual}`, JSON.stringify(MOTORISTAS_DB));
+                if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`motoristas_${unidadeAtual}`, MOTORISTAS_DB);
                 popularFrota();
             }
         };
@@ -2587,9 +2595,10 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
-            if(confirm("Confirma a EXCLUSÃO PERMANENTE do veículo " + al + "?")) {
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
                 delete FROTA_DB[al];
-                localStorage.setItem('usina_frota', JSON.stringify(FROTA_DB));
+                localStorage.setItem(`usina_frota_${unidadeAtual}`, JSON.stringify(FROTA_DB));
+                if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`frota_${unidadeAtual}`, FROTA_DB);
                 popularFrota();
             }
         };
@@ -2601,9 +2610,10 @@ setTimeout(window.inicializarNuvem, 1000);
                 if (senha !== null) alert("Senha Incorreta! Ação Cancelada.");
                 return;
             }
-            if(confirm("Confirma a EXCLUSÃO PERMANENTE do traço " + nome + "?")) {
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
                 delete TRACOS_DB[nome];
-                localStorage.setItem('usina_tracos', JSON.stringify(TRACOS_DB));
+                localStorage.setItem(`usina_tracos_${unidadeAtual}`, JSON.stringify(TRACOS_DB));
+                if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`tracos_${unidadeAtual}`, TRACOS_DB);
                 popularTracos();
                 alert("Traço removido com sucesso!");
             }
@@ -2705,8 +2715,11 @@ setTimeout(window.inicializarNuvem, 1000);
 
             TRACOS_DB[nome] = novoTraco;
 
-            localStorage.setItem('usina_tracos', JSON.stringify(TRACOS_DB));
-            alert("Traço " + nome + " salvo localmente com sucesso!");
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            localStorage.setItem(`usina_tracos_${unidadeAtual}`, JSON.stringify(TRACOS_DB));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`tracos_${unidadeAtual}`, TRACOS_DB);
+            
+            alert("Traço " + nome + " salvo com sucesso para a Usina " + unidadeAtual + "!");
             
             // Resetar estado de edição
             estado.tracoEmEdicao = null;
@@ -2901,8 +2914,9 @@ setTimeout(window.inicializarNuvem, 1000);
                 const traco = TRACOS_DB[estado.tracoSelecionado];
                 if (!traco) return;
 
-                // 1. CARREGA UMIDADES
-                const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
+                // 1. CARREGA UMIDADES ISOLADAS
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+                const umidsSalvas = JSON.parse(localStorage.getItem(`usina_umidade_${unidadeAtual}`) || '{}');
 
                 // 2. CÁLCULO DA ÁGUA CORRIGIDA E DASHBOARD
                 let totalAguaRetida = 0;
@@ -3027,7 +3041,8 @@ setTimeout(window.inicializarNuvem, 1000);
                 setP('p_inicio_mistura', document.getElementById('inputHoraMistura').value);
 
                 // 2. CÁLCULO DE MATERIAIS PARA O RODAPÉ DA NOTA
-                const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+                const umidsSalvas = JSON.parse(localStorage.getItem(`usina_umidade_${unidadeAtual}`) || '{}');
                 const f = (val) => (parseFloat(val || 0) * volume).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
                 let materialRows = [];
@@ -3125,7 +3140,8 @@ setTimeout(window.inicializarNuvem, 1000);
         };
         
         window.carregarUmidadesSalvas = function() {
-            const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            const umidsSalvas = JSON.parse(localStorage.getItem(`usina_umidade_${unidadeAtual}`) || '{}');
             MAT_DB.forEach(mat => {
                 if(mat.type === 'aggregate') {
                     const el = document.getElementById('umid_' + mat.id);
@@ -3206,7 +3222,10 @@ setTimeout(window.inicializarNuvem, 1000);
                 }
             });
             
-            localStorage.setItem('usina_umidade', JSON.stringify(umids));
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            localStorage.setItem(`usina_umidade_${unidadeAtual}`, JSON.stringify(umids));
+            if(window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes(`umidade_${unidadeAtual}`, umids);
+            
             if(estado.tracoSelecionado) {
                 recalcular();
                 atualizarTabelaUmidade();
@@ -3267,7 +3286,8 @@ setTimeout(window.inicializarNuvem, 1000);
                     return;
                 }
 
-                const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+                const umidsSalvas = JSON.parse(localStorage.getItem(`usina_umidade_${unidadeAtual}`) || '{}');
                 const fmt = (v) => v.toFixed(0);
 
                 let totalAguaDesc = 0;
@@ -3345,7 +3365,8 @@ setTimeout(window.inicializarNuvem, 1000);
             const dataAtual = new Date().toLocaleDateString('pt-BR');
             const horaAtual = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
             
-            const umidsSalvas = JSON.parse(localStorage.getItem('usina_umidade') || '{}');
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+            const umidsSalvas = JSON.parse(localStorage.getItem(`usina_umidade_${unidadeAtual}`) || '{}');
             const fmt = (v) => v.toFixed(0);
 
             let rowsMateriais = "";
