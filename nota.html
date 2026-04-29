@@ -1394,7 +1394,7 @@ setTimeout(window.inicializarNuvem, 1000);
             });
         }
 
-        window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : TRACOS_DEFAULT;
+        window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
 
         let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
         window.FROTA_DB = (frotaSalva && Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
