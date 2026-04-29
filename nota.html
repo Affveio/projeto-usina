@@ -424,13 +424,15 @@ window.inicializarNuvem = async () => {
 
         for (const config of configs) {
             const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
-            if (dadosNuvem) {
+            // SÓ SOBRESCREVE SE TIVER DADOS REAIS NA NUVEM
+            if (dadosNuvem && (Array.isArray(dadosNuvem) ? dadosNuvem.length > 0 : Object.keys(dadosNuvem).length > 0)) {
                 localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
-                // Atualiza variáveis globais e UI
                 if (config.id === 'tracos') { TRACOS_DB = dadosNuvem; if(window.popularTracos) popularTracos(); }
                 if (config.id === 'frota') { FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                 if (config.id === 'motoristas') { MOTORISTAS_DB = dadosNuvem; if(window.popularMotoristas) popularMotoristas(); }
                 if (config.id === 'recebimentos_cimento') { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
+            } else {
+                console.log(`☁️ Mantendo dados locais para ${config.id} pois a nuvem retornou vazio.`);
             }
         }
     }
@@ -2306,6 +2308,15 @@ setTimeout(window.inicializarNuvem, 1000);
             Object.keys(TRACOS_DB).forEach(nome => {
                 let trac = TRACOS_DB[nome];
                 
+                // CORREÇÃO: Mostrar se for da usina atual OU se for um traço geral (sem unidade definida)
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+                const unidadeDoTraco = trac.unidade || '';
+                
+                // Se estivermos em uma usina específica, só filtramos se o traço tiver uma unidade DIFERENTE da nossa
+                if (unidadeAtual !== 'GERAL' && unidadeDoTraco !== '' && unidadeDoTraco !== unidadeAtual) {
+                    return; 
+                }
+
                 let li = document.createElement('li');
                 let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
                 if (ativo) {
@@ -2415,7 +2426,8 @@ setTimeout(window.inicializarNuvem, 1000);
                 let vec = FROTA_DB[al];
                 let ativo = vec.hasOwnProperty('ativo') ? vec.ativo : true;
                 
-                // Pra emissao:
+                // CORREÇÃO: Betoneiras e Motoristas são globais (aparecem em todas as usinas)
+                // Se quiser filtrar por usina no futuro, basta adicionar a lógica aqui.
                 if(ativo) {
                     let li = document.createElement('li');
                     li.innerText = al;
