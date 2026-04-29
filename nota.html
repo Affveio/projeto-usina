@@ -1433,30 +1433,17 @@ setTimeout(window.inicializarNuvem, 1000);
             const selectRapido = document.getElementById('select-unidade-rapido');
             if(selectRapido) selectRapido.value = unidadeAtual;
 
-            // Auto-Organização de Traços por Nome
-            const autoOrganizarTracos = () => {
-                let tracos = JSON.parse(localStorage.getItem('usina_tracos') || '{}');
-                let mudou = false;
-                Object.keys(tracos).forEach(n => {
-                    if (!tracos[n].unidade) {
-                        if (n.includes('375')) { tracos[n].unidade = 'A375'; mudou = true; }
-                        else if (n.includes('369')) { tracos[n].unidade = 'A369'; mudou = true; }
-                    }
-                });
-                if (mudou) {
-                    localStorage.setItem('usina_tracos', JSON.stringify(tracos));
-                    TRACOS_DB = tracos;
-                }
-            };
-            autoOrganizarTracos();
-
-            popularBarraMateriais();
-            popularTracos();
-            popularCamposCadastroTraco();
-            popularCamposPesagem();
-            carregarUmidadesSalvas();
-            popularFrota();
-            recalcular();
+            // CARREGAMENTO INICIAL DE DADOS (DA UNIDADE)
+            if(window.popularBarraMateriais) popularBarraMateriais();
+            if(window.popularTracos) popularTracos();
+            if(window.popularCamposCadastroTraco) popularCamposCadastroTraco();
+            if(window.popularCamposPesagem) popularCamposPesagem();
+            if(window.carregarUmidadesSalvas) carregarUmidadesSalvas();
+            if(window.popularFrota) popularFrota();
+            if(window.recalcular) recalcular();
+            
+            // Sincronização Inicial com a Nuvem
+            inicializarNuvem();
         };
 
 
