@@ -431,6 +431,7 @@ window.inicializarNuvem = async () => {
                 if (config.id === 'frota') { FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                 if (config.id === 'motoristas') { MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                 if (config.id === 'recebimentos_cimento') { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
+                if (config.id === 'materiais') { MAT_DB = dadosNuvem; if(window.popularBarraMateriais) popularBarraMateriais(); }
             } else {
                 console.log(`☁️ Mantendo dados locais para ${config.id} pois a nuvem retornou vazio.`);
             }
@@ -1351,7 +1352,8 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        let MAT_DB = JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
+        let materiaisSalvos = JSON.parse(localStorage.getItem('usina_materiais') || '[]');
+        let MAT_DB = (materiaisSalvos && materiaisSalvos.length > 0) ? materiaisSalvos : MATERIAIS_DEFAULT;
 
         let estado = {
             tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
