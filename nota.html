@@ -1300,8 +1300,39 @@ setTimeout(window.inicializarNuvem, 1000);
         let tracosSalvos = JSON.parse(localStorage.getItem('usina_tracos') || '{}');
         let TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : TRACOS_DEFAULT;
 
+        const FROTA_DEFAULT = {
+            "AL-8828": { placa: "TLV-2G93", ativo: true },
+            "AL-8831": { placa: "TLB-7D75", ativo: true },
+            "AL-8835": { placa: "TIP-5A25", ativo: true },
+            "AL-8836": { placa: "TJV-8I29", ativo: true },
+            "AL-7249": { placa: "RVA4F86", ativo: true },
+            "AL-7311": { placa: "TFS1D45", ativo: true },
+            "AL-7148": { placa: "RYP2H94", ativo: true },
+            "AL-7233": { placa: "RYP3G14", ativo: true },
+            "AL-7349": { placa: "TFH5B45", ativo: true },
+            "AL-7312": { placa: "TGK8G25", ativo: true },
+            "AL-9161": { placa: "TFR6E95", ativo: true },
+            "AL-9597": { placa: "TFH5B45", ativo: true }
+        };
+
         let frotaSalva = JSON.parse(localStorage.getItem('usina_frota') || '{}');
         let FROTA_DB = (frotaSalva && Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
+
+        const MOTORISTAS_DEFAULT = {
+            "57888": { nome: "JOSE EDIVALDO CONCEICAO OLIVEIRA", ativo: true },
+            "60045": { nome: "JOSE FELIPE GONÇALO FERREIRA", ativo: true },
+            "60022": { nome: "ARIANOR ALVES", ativo: true },
+            "60121": { nome: "CARLOS EUGENIO VITORINO DE MEDEIROS", ativo: true },
+            "58264": { nome: "DAMIAO LUCIANO DA SILVA", ativo: true },
+            "60580": { nome: "LUAN JONAS DAVI", ativo: true },
+            "58052": { nome: "EDSON LUIZ MIRANDA", ativo: true },
+            "57506": { nome: "WILLIAN ARMANDO MARCANO", ativo: true },
+            "57744": { nome: "FLAVIO DOS SANTOS ESTACIO", ativo: true },
+            "59935": { nome: "JOSE ADIEL DE SOUZA DE BRITO", ativo: true },
+            "60042": { nome: "JOSE SERGIO", ativo: true },
+            "60972": { nome: "MANOEL ALVES DE LIMA", ativo: true },
+            "58372": { nome: "VALDEITON CARVALHO", ativo: true }
+        };
 
         const MOTORISTAS_DEFAULT = {
             "57888": { nome: "JOSE EDIVALDO CONCEICAO OLIVEIRA", ativo: true },
