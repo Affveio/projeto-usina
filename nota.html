@@ -426,10 +426,10 @@ window.inicializarNuvem = async () => {
             const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
             if (dadosNuvem) {
                 localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
-                // Atualiza variáveis globais se existirem
+                // Atualiza variáveis globais e UI
                 if (config.id === 'tracos') { TRACOS_DB = dadosNuvem; if(window.popularTracos) popularTracos(); }
-                if (config.id === 'frota') { if(window.popularFrota) popularFrota(); }
-                if (config.id === 'motoristas') { if(window.popularMotoristas) popularMotoristas(); }
+                if (config.id === 'frota') { FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
+                if (config.id === 'motoristas') { MOTORISTAS_DB = dadosNuvem; if(window.popularMotoristas) popularMotoristas(); }
                 if (config.id === 'recebimentos_cimento') { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
             }
         }
