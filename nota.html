@@ -2342,10 +2342,19 @@ setTimeout(window.inicializarNuvem, 1000);
                     
                     let htmlMats = '';
                     MAT_DB.forEach(mat => {
-                        // BUSCA O VALOR NA NUVEM, SE ESTIVER ZERADO OU NÃO EXISTIR, BUSCA NO PADRÃO DE FÁBRICA
+                        // BUSCA O VALOR NA NUVEM
                         let valor = trac[mat.id];
+                        
+                        // SE ESTIVER ZERADO, BUSCA NO PADRÃO DE FÁBRICA COM BUSCA INTELIGENTE
                         if (!valor || valor === 0 || valor === "0") {
-                            const tracoPadrao = TRACOS_DEFAULT[nome];
+                            let tracoPadrao = TRACOS_DEFAULT[nome];
+                            
+                            // SE NÃO ACHOU PELO NOME EXATO (EX: AT-369), TENTA PELO NOME DA OUTRA USINA (EX: AT-375)
+                            if (!tracoPadrao) {
+                                const nomeAlt = nome.includes('369') ? nome.replace('369', '375') : nome.replace('375', '369');
+                                tracoPadrao = TRACOS_DEFAULT[nomeAlt];
+                            }
+
                             if (tracoPadrao && tracoPadrao[mat.id]) {
                                 valor = tracoPadrao[mat.id];
                             }
