@@ -2310,15 +2310,9 @@ setTimeout(window.inicializarNuvem, 1000);
             Object.keys(TRACOS_DB).forEach(nome => {
                 let trac = TRACOS_DB[nome];
                 
-                // CORREÇÃO: Mostrar se for da usina atual OU se for um traço geral (sem unidade definida)
-                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
-                const unidadeDoTraco = trac.unidade || '';
+                // CORREÇÃO FINAL: Mostrar todos os traços em todas as usinas para evitar que sumam.
+                // A separação por usina só deve acontecer se você marcar o traço como inativo em uma delas.
                 
-                // Se estivermos em uma usina específica, só filtramos se o traço tiver uma unidade DIFERENTE da nossa
-                if (unidadeAtual !== 'GERAL' && unidadeDoTraco !== '' && unidadeDoTraco !== unidadeAtual) {
-                    return; 
-                }
-
                 let li = document.createElement('li');
                 let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
                 if (ativo) {
