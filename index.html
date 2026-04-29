@@ -2453,7 +2453,8 @@ setTimeout(window.inicializarNuvem, 1000);
                 // 1. Se estiver em modo GERAL, mostra tudo.
                 // 2. Se o traço NÃO tiver unidade (antigo), mostra em todas (até ser editado).
                 // 3. Se o traço TIVER unidade e for diferente da atual, ESCONDE.
-                if (unidadeAtual !== 'GERAL' && unidadeTraco && unidadeTraco !== unidadeAtual) return;
+                const mostrar = (unidadeAtual === 'GERAL') || !unidadeTraco || (unidadeTraco === unidadeAtual);
+                if (!mostrar) return;
                 
                 let li = document.createElement('li');
                 let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
