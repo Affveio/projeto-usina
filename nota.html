@@ -449,8 +449,11 @@ window.inicializarNuvem = async () => {
                 localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
 
                 if (config.id.startsWith('tracos')) { 
-                    window.TRACOS_DB = dadosNuvem; 
-                    if(window.popularTracos) popularTracos(); 
+                    // Se os dados da nuvem forem válidos, usa eles, senão mantém o local
+                    if (dadosNuvem && Object.keys(dadosNuvem).length > 0) {
+                        window.TRACOS_DB = dadosNuvem; 
+                        if(window.popularTracos) popularTracos(); 
+                    }
                 }
                 if (config.id.startsWith('frota')) { window.FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                 if (config.id.startsWith('motoristas')) { window.MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
@@ -1361,15 +1364,24 @@ setTimeout(window.inicializarNuvem, 1000);
                 }
             }
         })();
-        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-        // -------------------------------------------------------
+        const uniAt = localStorage.getItem('usina_unidade') || 'A375';
+        let tracosSalvosRaw = localStorage.getItem(`usina_tracos_${uniAt}`);
+        let tracosSalvos = {};
+        try {
+            tracosSalvos = JSON.parse(tracosSalvosRaw || '{}');
+            if (Array.isArray(tracosSalvos)) {
+                // Se por algum erro salvou como array, converte para objeto indexado por nome
+                let obj = {};
+                tracosSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
+                tracosSalvos = obj;
+            }
+        } catch(e) { tracosSalvos = {}; }
         
-        let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
-        
-        // SANITIZAÇÃO INICIAL: Garante que os traços locais não estejam zerados
-        if (tracosSalvos && Object.keys(tracosSalvos).length > 0) {
+        // SANITIZAÇÃO: Garante que os traços locais não estejam corrompidos
+        if (Object.keys(tracosSalvos).length > 0) {
             Object.keys(tracosSalvos).forEach(nome => {
                 const t = tracosSalvos[nome];
+                if (!t) return;
                 const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
                 if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
                     Object.assign(t, p);
@@ -1377,16 +1389,16 @@ setTimeout(window.inicializarNuvem, 1000);
             });
         }
 
-        window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+        window.TRACOS_DB = (Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
 
-        let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
-        window.FROTA_DB = (frotaSalva && Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
+        let frotaSalva = {}; try { frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${uniAt}`) || '{}'); } catch(e){}
+        window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
 
-        let motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
-        window.MOTORISTAS_DB = (motoristasSalvos && Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
+        let motoristasSalvos = {}; try { motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${uniAt}`) || '{}'); } catch(e){}
+        window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
         
-        let materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
-        window.MAT_DB = (materiaisSalvos && materiaisSalvos.length > 0) ? materiaisSalvos : MATERIAIS_DEFAULT;
+        let materiaisSalvos = []; try { materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${uniAt}`) || '[]'); } catch(e){}
+        window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
 
         let estado = {
             tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
@@ -4197,62 +4209,6 @@ window.renderizarHistoricoCimento = function() {
 
 
     // Auto-carregar UI do Silo no inicio
-    document.addEventListener("DOMContentLoaded", async function() {
-        // PRIORIDADE 1: Hash na URL (#A369, #A375, #GERAL)
-        // PRIORIDADE 2: LocalStorage
-        let unidadeAlvo = window.location.hash.replace('#', '').toUpperCase();
-        if (!['A369', 'A375', 'GERAL'].includes(unidadeAlvo)) {
-            unidadeAlvo = localStorage.getItem('usina_unidade') || 'A369';
-        } else {
-            localStorage.setItem('usina_unidade', unidadeAlvo);
-        }
-
-        const selectRapido = document.getElementById('select-unidade-rapido');
-        if (selectRapido) selectRapido.value = unidadeAlvo;
-        
-        const displayFixo = document.getElementById('display-unidade-fixa');
-        if (displayFixo) displayFixo.innerText = "USINA " + unidadeAlvo;
-
-        // Força o título correto logo no início
-        const tituloHistorico = document.querySelector('.main-content h2') || document.querySelector('h1');
-        if (tituloHistorico && !tituloHistorico.innerText.includes('Recebimento')) {
-            tituloHistorico.innerText = "Histórico de Produção - " + (unidadeAlvo === 'GERAL' ? 'TODAS AS USINAS' : unidadeAlvo);
-        }
-
-        // Tenta baixar da nuvem primeiro para espelhar
-        if (window.dbBaixarEstoqueSilos) {
-            const cloudData = await window.dbBaixarEstoqueSilos();
-            if (cloudData) window.usina_silos_db = cloudData;
-        }
-        
-        if (window.dbBaixarHistoricoDaNuvem) {
-            await window.dbBaixarHistoricoDaNuvem();
-        }
-        
-        atualizarSilosUI();
-        
-        // Auto-sugestão da próxima NF baseada no histórico
-        try {
-            let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            if (hist.length > 0) {
-                let maxNF = 0;
-                hist.forEach(h => {
-                    let nfNum = parseInt(h.nf);
-                    if (!isNaN(nfNum) && nfNum > maxNF) {
-                        maxNF = nfNum;
-                    }
-                });
-                if (maxNF > 0) {
-                    let inputNFElem = document.getElementById('inputNF');
-                    if (inputNFElem) {
-                        inputNFElem.value = maxNF + 1;
-                    }
-                }
-            }
-        } catch(e) {
-            console.error("Erro ao puxar NF do histórico", e);
-        }
-    });
 </script>
 
 

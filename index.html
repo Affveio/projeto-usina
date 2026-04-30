@@ -1378,22 +1378,6 @@ setTimeout(window.inicializarNuvem, 1000);
             "AT-375-CON.35.400.REV.00.2,5H": { cimento: 400, agua: 170, recover: 0, mira410: 2.80, viscocrete: 1.20, areia: 870, brita0: 410, brita1: 580, fck: 35, slump_ini: 100, slump_fim: 160, classe: 'S100' }
         };
 
-        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-        let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
-        
-        // SANITIZAÇÃO INICIAL: Garante que os traços locais não estejam zerados
-        if (tracosSalvos && Object.keys(tracosSalvos).length > 0) {
-            Object.keys(tracosSalvos).forEach(nome => {
-                const t = tracosSalvos[nome];
-                const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
-                if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
-                    Object.assign(t, p);
-                }
-            });
-        }
-
-        window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
-
         const FROTA_DEFAULT = {
             "AL-8828": { placa: "TLV-2G93", ativo: true },
             "AL-8831": { placa: "TLB-7D75", ativo: true },
@@ -1409,7 +1393,32 @@ setTimeout(window.inicializarNuvem, 1000);
             "AL-9597": { placa: "TFH5B45", ativo: true }
         };
 
-        let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
+        const uniAt = localStorage.getItem('usina_unidade') || 'A375';
+        
+        let tracosSalvosRaw = localStorage.getItem(`usina_tracos_${uniAt}`);
+        let tracosSalvos = {};
+        try {
+            tracosSalvos = JSON.parse(tracosSalvosRaw || '{}');
+            if (Array.isArray(tracosSalvos)) {
+                let obj = {};
+                tracosSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
+                tracosSalvos = obj;
+            }
+        } catch(e) { tracosSalvos = {}; }
+        
+        if (Object.keys(tracosSalvos).length > 0) {
+            Object.keys(tracosSalvos).forEach(nome => {
+                const t = tracosSalvos[nome];
+                if (!t) return;
+                const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
+                if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
+                    Object.assign(t, p);
+                }
+            });
+        }
+        window.TRACOS_DB = (Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+
+        let frotaSalva = {}; try { frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${uniAt}`) || '{}'); } catch(e){}
         window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
 
         const MOTORISTAS_DEFAULT = {
@@ -1428,7 +1437,7 @@ setTimeout(window.inicializarNuvem, 1000);
             "58372": { nome: "VALDEITON CARVALHO", ativo: true }
         };
 
-        let motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
+        let motoristasSalvos = {}; try { motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${uniAt}`) || '{}'); } catch(e){}
         window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
         
         const MATERIAIS_DEFAULT = [
@@ -1445,7 +1454,7 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        let materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
+        let materiaisSalvos = []; try { materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${uniAt}`) || '[]'); } catch(e){}
         window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
 
         let estado = {
