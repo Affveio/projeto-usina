@@ -1364,13 +1364,14 @@ setTimeout(window.inicializarNuvem, 1000);
                 }
             }
         })();
-        const uniAt = localStorage.getItem('usina_unidade') || 'A375';
-        let tracosSalvosRaw = localStorage.getItem(`usina_tracos_${uniAt}`);
+        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+
+        // --- 2. INICIALIZAÇÃO DE BANCO DE DADOS LOCAL ---
+        let tracosSalvosRaw = localStorage.getItem(`usina_tracos_${unidadeAtual}`);
         let tracosSalvos = {};
         try {
             tracosSalvos = JSON.parse(tracosSalvosRaw || '{}');
             if (Array.isArray(tracosSalvos)) {
-                // Se por algum erro salvou como array, converte para objeto indexado por nome
                 let obj = {};
                 tracosSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
                 tracosSalvos = obj;
@@ -1391,13 +1392,13 @@ setTimeout(window.inicializarNuvem, 1000);
 
         window.TRACOS_DB = (Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
 
-        let frotaSalva = {}; try { frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${uniAt}`) || '{}'); } catch(e){}
+        let frotaSalva = {}; try { frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}'); } catch(e){}
         window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
 
-        let motoristasSalvos = {}; try { motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${uniAt}`) || '{}'); } catch(e){}
+        let motoristasSalvos = {}; try { motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}'); } catch(e){}
         window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
         
-        let materiaisSalvos = []; try { materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${uniAt}`) || '[]'); } catch(e){}
+        let materiaisSalvos = []; try { materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]'); } catch(e){}
         window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
 
         let estado = {
@@ -1410,7 +1411,6 @@ setTimeout(window.inicializarNuvem, 1000);
 
         window.onload = async function() {
             try {
-                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
                 console.log("🚀 Iniciando aplicação para usina:", unidadeAtual);
                 
                 const hoje = new Date();
