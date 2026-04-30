@@ -2032,7 +2032,15 @@ setTimeout(window.inicializarNuvem, 1000);
             document.getElementById('resumoDataDisplay').innerText = dataPt;
             
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            let notasDia = hist.filter(n => n.data === dataPt);
+            const unidadeAtualResumo = localStorage.getItem('usina_unidade') || 'A375';
+            
+            let notasDia = hist.filter(n => {
+                const mesmoDia = n.data === dataPt;
+                if (!mesmoDia) return false;
+                if (unidadeAtualResumo === 'GERAL') return true;
+                const uniNota = n.unidade || 'A375';
+                return uniNota === unidadeAtualResumo;
+            });
             
             let tBody = document.getElementById('tbodyResumo');
             tBody.innerHTML = "";
