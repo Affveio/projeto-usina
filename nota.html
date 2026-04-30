@@ -1410,6 +1410,7 @@ setTimeout(window.inicializarNuvem, 1000);
 
         window.onload = async function() {
             try {
+                const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
                 console.log("🚀 Iniciando aplicação para usina:", unidadeAtual);
                 
                 const hoje = new Date();
