@@ -2346,103 +2346,91 @@ setTimeout(window.inicializarNuvem, 1000);
         };
 
         window.popularTracos = function() {
-            let listaEmissao = document.getElementById('listaTracos');
-            if(listaEmissao) listaEmissao.innerHTML = "";
-            
-            let selectUmid = document.getElementById('selectTracoUmidade');
-            if(selectUmid) selectUmid.innerHTML = '<option value="">Nenhum Selecionado</option>';
-
-            let tBody = document.getElementById('tbodyTracosTable');
-            if(tBody) tBody.innerHTML = "";
-            
-            // Atualizar Headers da Tabela
-            const rowHeader = document.getElementById('row-header-materiais');
-            if(rowHeader) {
-                rowHeader.innerHTML = '<th></th><th></th><th></th><th></th><th></th><th></th><th></th>'; // Placeholders para colunas iniciais
-                MAT_DB.forEach(mat => {
-                    if (!mat || !mat.label) return;
-                    const th = document.createElement('th');
-                    th.innerText = mat.label.substring(0, 4).toUpperCase();
-                    th.title = mat.label;
-                    rowHeader.appendChild(th);
-                });
-            }
-
-            Object.keys(TRACOS_DB).forEach(nome => {
-                let trac = TRACOS_DB[nome];
-                if (!trac) return;
+            try {
+                let listaEmissao = document.getElementById('listaTracos');
+                if(listaEmissao) listaEmissao.innerHTML = "";
                 
-                // CORREÇÃO FINAL: Mostrar todos os traços em todas as usinas para evitar que sumam.
-                // A separação por usina só deve acontecer se você marcar o traço como inativo em uma delas.
+                let selectUmid = document.getElementById('selectTracoUmidade');
+                if(selectUmid) selectUmid.innerHTML = '<option value="">Nenhum Selecionado</option>';
+
+                let tBody = document.getElementById('tbodyTracosTable');
+                if(tBody) tBody.innerHTML = "";
                 
-                let li = document.createElement('li');
-                let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
-                if (ativo) {
-                    li.innerText = nome;
-                    if (nome === estado.tracoSelecionado) {
-                        li.classList.add('selected');
-                    }
-                    li.addEventListener('click', () => {
-                        window.selecionarTracoGeral(nome, 'lista');
+                // Headers
+                const rowHeader = document.getElementById('row-header-materiais');
+                if(rowHeader && window.MAT_DB) {
+                    rowHeader.innerHTML = '<th></th><th></th><th></th><th></th><th></th><th></th><th></th>';
+                    window.MAT_DB.forEach(mat => {
+                        const th = document.createElement('th');
+                        th.innerText = (mat.label || '').substring(0, 4).toUpperCase();
+                        th.title = mat.label;
+                        rowHeader.appendChild(th);
                     });
-                    listaEmissao.appendChild(li);
-
-                    if(selectUmid) {
-                        let opt = document.createElement('option');
-                        opt.value = nome;
-                        opt.innerText = nome;
-                        if(nome === estado.tracoSelecionado) opt.selected = true;
-                        selectUmid.appendChild(opt);
-                    }
                 }
 
-                if (tBody) {
-                    const fmt = (val) => Number(val || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                    let tr = document.createElement('tr');
-                    
-                    let htmlMats = '';
-                    MAT_DB.forEach(mat => {
-                        if (!mat || !mat.id) return;
-                        // BUSCA O VALOR NA NUVEM
-                        let valor = trac[mat.id];
+                if (!window.TRACOS_DB) return;
+
+                Object.keys(window.TRACOS_DB).forEach(nome => {
+                    try {
+                        let trac = window.TRACOS_DB[nome];
+                        if (!trac) return;
                         
-                        // SE ESTIVER ZERADO, BUSCA NO PADRÃO DE FÁBRICA COM BUSCA INTELIGENTE
-                        if (!valor || valor === 0 || valor === "0") {
-                            let tracoPadrao = TRACOS_DEFAULT[nome];
-                            
-                            // SE NÃO ACHOU PELO NOME EXATO (EX: AT-369), TENTA PELO NOME DA OUTRA USINA (EX: AT-375)
-                            if (!tracoPadrao) {
-                                const nomeAlt = nome.includes('369') ? nome.replace('369', '375') : nome.replace('375', '369');
-                                tracoPadrao = TRACOS_DEFAULT[nomeAlt];
+                        let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
+                        if (ativo) {
+                            if (listaEmissao) {
+                                let li = document.createElement('li');
+                                li.innerText = nome;
+                                if (nome === estado.tracoSelecionado) li.classList.add('selected');
+                                li.addEventListener('click', () => window.selecionarTracoGeral(nome, 'lista'));
+                                listaEmissao.appendChild(li);
                             }
 
-                            if (tracoPadrao && tracoPadrao[mat.id]) {
-                                valor = tracoPadrao[mat.id];
+                            if(selectUmid) {
+                                let opt = document.createElement('option');
+                                opt.value = nome;
+                                opt.innerText = nome;
+                                if(nome === estado.tracoSelecionado) opt.selected = true;
+                                selectUmid.appendChild(opt);
                             }
                         }
-                        htmlMats += `<td>${fmt(valor)}</td>`;
-                    });
-                    
-                    const uniTraco = trac.unidade || '---';
-                    const corUni = uniTraco === 'A369' ? '#b91c1c' : (uniTraco === 'A375' ? '#1e40af' : '#64748b');
 
-                    tr.innerHTML = `
-                        <td style="font-size: 10px; font-weight: 800;"><span style="color: ${corUni}; padding: 2px 4px; border: 1px solid currentColor; border-radius: 4px;">${uniTraco}</span></td>
-                        <td style="text-align: left; font-size:10px; font-weight:700;">${nome}</td>
-                        <td style="display: flex; gap: 4px;">
-                            <button onclick="editarTraco('${nome}')" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">✏️ Editar</button>
-                            <button onclick="excluirTraco('${nome}')" style="background:#fef2f2; border:1px solid #fee2e2; color:#ef4444; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">🗑️ Excluir</button>
-                        </td>
-                        <td><span style="padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; background: ${ativo ? '#dcfce7' : '#fee2e2'}; color: ${ativo ? '#166534' : '#991b1b'}">${ativo ? 'ATIVO' : 'INATIVO'}</span></td>
-                        <td style="color:#3b82f6;">${trac.fck || 0}</td>
-                        <td style="font-size:10px;">${trac.slump_ini || 0}-${trac.slump_fim || 0}</td>
-                        <td style="font-size:10px;">${trac.classe || ''}</td>
-                        ${htmlMats}
-                    `;
-                    tBody.appendChild(tr);
-                }
-            });
-        }
+                        if (tBody) {
+                            const fmt = (val) => Number(val || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            let tr = document.createElement('tr');
+                            let htmlMats = '';
+                            if (window.MAT_DB) {
+                                window.MAT_DB.forEach(mat => {
+                                    let valor = trac[mat.id] || 0;
+                                    htmlMats += `<td>${fmt(valor)}</td>`;
+                                });
+                            }
+                            
+                            const uniTraco = trac.unidade || '---';
+                            const corUni = uniTraco === 'A369' ? '#b91c1c' : (uniTraco === 'A375' ? '#1e40af' : '#64748b');
+
+                            tr.innerHTML = `
+                                <td style="font-size: 10px; font-weight: 800;"><span style="color: ${corUni}; padding: 2px 4px; border: 1px solid currentColor; border-radius: 4px;">${uniTraco}</span></td>
+                                <td style="text-align: left; font-size:10px; font-weight:700;">${nome}</td>
+                                <td style="display: flex; gap: 4px;">
+                                    <button onclick="editarTraco('${nome}')" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">✏️ Editar</button>
+                                    <button onclick="excluirTraco('${nome}')" style="background:#fef2f2; border:1px solid #fee2e2; color:#ef4444; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">🗑️ Excluir</button>
+                                </td>
+                                <td><span style="padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; background: ${ativo ? '#dcfce7' : '#fee2e2'}; color: ${ativo ? '#166534' : '#991b1b'}">${ativo ? 'ATIVO' : 'INATIVO'}</span></td>
+                                <td style="color:#3b82f6;">${trac.fck || 0}</td>
+                                <td style="font-size:10px;">${trac.slump_ini || 0}-${trac.slump_fim || 0}</td>
+                                <td style="font-size:10px;">${trac.classe || ''}</td>
+                                ${htmlMats}
+                            `;
+                            tBody.appendChild(tr);
+                        }
+                    } catch (errInner) {
+                        console.error("Erro ao processar traço:", nome, errInner);
+                    }
+                });
+            } catch (e) {
+                console.error("Erro em popularTracos:", e);
+            }
+        };
 
         
         

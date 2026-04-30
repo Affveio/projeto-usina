@@ -1409,8 +1409,8 @@ setTimeout(window.inicializarNuvem, 1000);
             "AL-9597": { placa: "TFH5B45", ativo: true }
         };
 
-        const uniIni = localStorage.getItem('usina_unidade') || 'A375';
-        let FROTA_DB = JSON.parse(localStorage.getItem(`usina_frota_${uniIni}`)) || FROTA_DEFAULT;
+        let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
+        window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
 
         const MOTORISTAS_DEFAULT = {
             "57888": { nome: "JOSE EDIVALDO CONCEICAO OLIVEIRA", ativo: true },
@@ -1428,7 +1428,8 @@ setTimeout(window.inicializarNuvem, 1000);
             "58372": { nome: "VALDEITON CARVALHO", ativo: true }
         };
 
-        let MOTORISTAS_DB = JSON.parse(localStorage.getItem(`usina_motoristas_${uniIni}`)) || MOTORISTAS_DEFAULT;
+        let motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
+        window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
         
         const MATERIAIS_DEFAULT = [
             { id: "cimento", label: "Cimento CP II-F 40", unit: "KG", type: "cement" },
@@ -1444,7 +1445,8 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        let MAT_DB = JSON.parse(localStorage.getItem(`usina_materiais_${uniIni}`)) || MATERIAIS_DEFAULT;
+        let materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
+        window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
 
         let estado = {
             tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
@@ -1502,7 +1504,6 @@ setTimeout(window.inicializarNuvem, 1000);
                 });
             }
 
-            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
             const displayFix = document.getElementById('display-unidade-fixa');
             if(displayFix) displayFix.innerText = "USINA " + unidadeAtual;
 
@@ -2445,91 +2446,6 @@ setTimeout(window.inicializarNuvem, 1000);
         };
 
         window.popularTracos = function() {
-            let listaEmissao = document.getElementById('listaTracos');
-            if(listaEmissao) listaEmissao.innerHTML = "";
-            
-            let selectUmid = document.getElementById('selectTracoUmidade');
-            if(selectUmid) selectUmid.innerHTML = '<option value="">Nenhum Selecionado</option>';
-
-            let tBody = document.getElementById('tbodyTracosTable');
-            if(tBody) tBody.innerHTML = "";
-            
-            // Atualizar Headers da Tabela
-            const rowHeader = document.getElementById('row-header-materiais');
-            if(rowHeader) {
-                rowHeader.innerHTML = '<th>USINA</th><th></th><th></th><th></th><th></th><th></th><th></th>'; // Coluna USINA adicionada
-                MAT_DB.forEach(mat => {
-                    if (!mat || !mat.label) return;
-                    const th = document.createElement('th');
-                    th.innerText = mat.label.substring(0, 4).toUpperCase();
-                    th.title = mat.label;
-                    rowHeader.appendChild(th);
-                });
-                const hDinamico = document.getElementById('header-materiais-dinamicos');
-                if(hDinamico) {
-                    hDinamico.style.display = 'table-cell';
-                    hDinamico.innerText = "MATERIAIS E CONSUMO (KG / L)";
-                }
-            }
-            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-
-            Object.keys(TRACOS_DB).forEach(nome => {
-                let trac = TRACOS_DB[nome];
-                const unidadeTraco = trac.unidade; 
-                
-                // FILTRO REFORÇADO: 
-                // 1. Se estiver em modo GERAL, mostra tudo.
-                // 2. Se o traço NÃO tiver unidade (antigo), mostra em todas (até ser editado).
-                // 3. Se o traço TIVER unidade e for diferente da atual, ESCONDE.
-                const mostrar = (unidadeAtual === 'GERAL') || !unidadeTraco || (unidadeTraco === unidadeAtual);
-                if (!mostrar) return;
-                
-                let li = document.createElement('li');
-                let ativo = trac.hasOwnProperty('ativo') ? trac.ativo : true;
-                if (ativo) {
-                    li.innerText = nome;
-                    if (nome === estado.tracoSelecionado) {
-                        li.classList.add('selected');
-                    }
-                    li.addEventListener('click', () => {
-                        window.selecionarTracoGeral(nome, 'lista');
-                    });
-                    listaEmissao.appendChild(li);
-
-                    if(selectUmid) {
-                        let opt = document.createElement('option');
-                        opt.value = nome;
-                        opt.innerText = nome;
-                        if(nome === estado.tracoSelecionado) opt.selected = true;
-                        selectUmid.appendChild(opt);
-                    }
-                }
-
-                if (tBody) {
-                    const fmt = (val) => Number(val || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                    let tr = document.createElement('tr');
-                    
-                    let htmlMats = '';
-                    MAT_DB.forEach(mat => {
-                        htmlMats += `<td>${fmt(trac[mat.id])}</td>`;
-                    });
-                    
-                    const uniTraco = trac.unidade || '---';
-                    const corUni = uniTraco === 'A369' ? '#b91c1c' : (uniTraco === 'A375' ? '#1e40af' : '#64748b');
-
-                    tr.innerHTML = `
-                        <td style="font-size: 10px; font-weight: 800;"><span style="color: ${corUni}; padding: 2px 4px; border: 1px solid currentColor; border-radius: 4px;">${uniTraco}</span></td>
-                        <td style="text-align: left; font-size:10px; font-weight:700;">${nome}</td>
-                        <td style="display: flex; gap: 4px;">
-                            <button onclick="editarTraco('${nome}')" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">✏️ Editar</button>
-                            <button onclick="excluirTraco('${nome}')" style="background:#fef2f2; border:1px solid #fee2e2; color:#ef4444; border-radius:4px; cursor:pointer; padding:3px 6px; font-size:11px;">🗑️ Excluir</button>
-                        </td>
-                        <td><span style="padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: bold; background: ${ativo ? '#dcfce7' : '#fee2e2'}; color: ${ativo ? '#166534' : '#991b1b'}">${ativo ? 'ATIVO' : 'INATIVO'}</span></td>
-                        <td style="color:#3b82f6;">${trac.fck || 0}</td>
-                        <td style="font-size:10px;">${trac.slump_ini || 0}-${trac.slump_fim || 0}</td>
-                        <td style="font-size:10px;">${trac.classe || ''}</td>
-                        ${htmlMats}
-                    `;
                     tBody.appendChild(tr);
                 }
             });
