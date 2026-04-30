@@ -459,7 +459,7 @@ window.inicializarNuvem = async () => {
                     if (config.id.startsWith('motoristas')) { window.MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
                     if (config.id.startsWith('materiais')) { window.MAT_DB = Array.isArray(dadosNuvem) ? dadosNuvem : window.MAT_DB; if(window.popularBarraMateriais) popularBarraMateriais(); }
                     if (config.id.startsWith('umidade')) { if(window.carregarUmidadesSalvas) carregarUmidadesSalvas(); }
-                    if (config.id.startsWith('recebimentos_cimento')) { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
+                    if (config.id.startsWith('recebimentos_cimento')) { if(window.atualizarTabelaRecebimentos) atualizarTabelaRecebimentos(); }
                 }
             }
         } catch (err) {
@@ -1357,34 +1357,27 @@ setTimeout(window.inicializarNuvem, 1000);
         ];
 
         // --- REPARO DE EMERGÊNCIA (Executa antes de qualquer inicialização) ---
+        // --- 1. DETECÇÃO E PADRONIZAÇÃO DE UNIDADE (EXECUTAR IMEDIATAMENTE) ---
         (function() {
-            const uniReparo = localStorage.getItem('usina_unidade') || 'A375';
-            const keysParaReparar = [`usina_tracos_${uniReparo}`, `usina_frota_${uniReparo}`, `usina_motoristas_${uniReparo}`, `usina_materiais_${uniReparo}`, 'usina_tracos', 'usina_frota', 'usina_motoristas', 'usina_materiais'];
-            keysParaReparar.forEach(k => {
-                const val = localStorage.getItem(k);
-                if (val && (val.includes('[object Object]') || val === 'undefined' || val === 'null')) {
-                    console.warn(`Reparando chave corrompida: ${k}`);
-                    localStorage.removeItem(k);
+            const hashUnidade = window.location.hash.replace('#', '').toUpperCase();
+            const unidadeSalva = localStorage.getItem('usina_unidade');
+            const unidadePadrao = 'A375';
+            
+            if (hashUnidade && ['A369', 'A375', 'GERAL'].includes(hashUnidade)) {
+                if (hashUnidade !== unidadeSalva) {
+                    localStorage.setItem('usina_unidade', hashUnidade);
+                    window.location.reload();
                 }
-            });
+            } else if (!unidadeSalva) {
+                localStorage.setItem('usina_unidade', unidadePadrao);
+            }
         })();
-        // ----------------------------------------------------------------------
 
         const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-        
-        let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
-        
-        // SANITIZAÇÃO INICIAL: Garante que os traços locais não estejam zerados
-        if (tracosSalvos && Object.keys(tracosSalvos).length > 0) {
-            Object.keys(tracosSalvos).forEach(nome => {
-                const t = tracosSalvos[nome];
-                const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
-                if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
-                    Object.assign(t, p);
-                }
-            });
-        }
+        // ----------------------------------------------------------------------
 
+        // --- 2. CARREGAMENTO DE DADOS LOCAIS ---
+        let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
         window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
 
         let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
@@ -1404,63 +1397,65 @@ setTimeout(window.inicializarNuvem, 1000);
             tracoEmEdicao: null
         };
 
-        window.onload = function() {
-            // Sincroniza Unidade pelo HASH da URL se disponível
-            const hashUnidade = window.location.hash.replace('#', '').toUpperCase();
-            if (hashUnidade && ['A369', 'A375', 'GERAL'].includes(hashUnidade)) {
-                localStorage.setItem('usina_unidade', hashUnidade);
+        window.onload = async function() {
+            try {
+                console.log("🚀 Iniciando aplicação para usina:", unidadeAtual);
+                
+                const hoje = new Date();
+                const dia = String(hoje.getDate()).padStart(2, '0');
+                const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+                const ano = hoje.getFullYear();
+                
+                if(document.getElementById('inputDate')) document.getElementById('inputDate').value = `${dia}/${mes}/${ano}`;
+                if(document.getElementById('inputHoraMistura')) document.getElementById('inputHoraMistura').value = hoje.toTimeString().substring(0,5);
+                
+                if(document.getElementById('inputVolume')) document.getElementById('inputVolume').addEventListener('input', recalcular);
+                if(document.getElementById('inputAguaUsina')) document.getElementById('inputAguaUsina').addEventListener('input', recalcular);
+                
+                const selectUmid = document.getElementById('selectTracoUmidade');
+                if(selectUmid) {
+                    selectUmid.addEventListener('change', function() {
+                        window.selecionarTracoGeral(this.value, 'dropdown');
+                    });
+                }
+                
+                const inputGelo = document.getElementById('inputGelo');
+                if(inputGelo) {
+                    inputGelo.addEventListener('change', function() {
+                        this.setAttribute('data-modificado', 'true');
+                        recalcular();
+                    });
+                }
+
+                const displayFix = document.getElementById('display-unidade-fixa');
+                if(displayFix) displayFix.innerText = "USINA " + unidadeAtual;
+
+                const selectRapido = document.getElementById('select-unidade-rapido');
+                if(selectRapido) selectRapido.value = unidadeAtual;
+
+                // CARREGAMENTO INICIAL DE DADOS NA INTERFACE
+                if(window.popularBarraMateriais) popularBarraMateriais();
+                if(window.popularTracos) popularTracos();
+                if(window.popularCamposCadastroTraco) popularCamposCadastroTraco();
+                if(window.popularCamposPesagem) popularCamposPesagem();
+                if(window.carregarUmidadesSalvas) carregarUmidadesSalvas();
+                if(window.popularFrota) popularFrota();
+                if(window.recalcular) recalcular();
+                
+                // Sincronização Inicial com a Nuvem
+                if (window.inicializarNuvem) await window.inicializarNuvem();
+
+                // Sugestão de NF
+                const hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
+                if (hist.length > 0) {
+                    const maxNF = Math.max(...hist.map(h => parseInt(h.nf) || 0));
+                    if (maxNF > 0 && document.getElementById('inputNF')) document.getElementById('inputNF').value = maxNF + 1;
+                }
+
+            } catch (err) {
+                console.error("Erro fatal na inicialização:", err);
             }
-
-            const hoje = new Date();
-            const dia = String(hoje.getDate()).padStart(2, '0');
-            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-            const ano = hoje.getFullYear();
-            
-            document.getElementById('inputDate').value = `${dia}/${mes}/${ano}`;
-            document.getElementById('inputHoraMistura').value = hoje.toTimeString().substring(0,5);
-            
-            document.getElementById('inputVolume').addEventListener('input', recalcular);
-            document.getElementById('inputAguaUsina').addEventListener('input', recalcular);
-            
-            const selectUmid = document.getElementById('selectTracoUmidade');
-            if(selectUmid) {
-                selectUmid.addEventListener('change', function() {
-                    window.selecionarTracoGeral(this.value, 'dropdown');
-                });
-            }
-            // O recalcular do Gelo é gerenciado pelo oninput no HTML para evitar duplicidade
-            document.getElementById('inputGelo').addEventListener('change', function() {
-                this.setAttribute('data-modificado', 'true');
-                recalcular();
-            });
-            
-            let nvAtivo = document.getElementById('nvAtivo');
-            if(nvAtivo) {
-                nvAtivo.addEventListener('change', function() {
-                    this.style.color = this.value === 'true' ? '#10b981' : '#d32f2f';
-                });
-            }
-
-            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-            const displayFix = document.getElementById('display-unidade-fixa');
-            if(displayFix) displayFix.innerText = "USINA " + unidadeAtual;
-
-            const selectRapido = document.getElementById('select-unidade-rapido');
-            if(selectRapido) selectRapido.value = unidadeAtual;
-
-            // CARREGAMENTO INICIAL DE DADOS (DA UNIDADE)
-            if(window.popularBarraMateriais) popularBarraMateriais();
-            if(window.popularTracos) popularTracos();
-            if(window.popularCamposCadastroTraco) popularCamposCadastroTraco();
-            if(window.popularCamposPesagem) popularCamposPesagem();
-            if(window.carregarUmidadesSalvas) carregarUmidadesSalvas();
-            if(window.popularFrota) popularFrota();
-            if(window.recalcular) recalcular();
-            
-            // Sincronização Inicial com a Nuvem
-            inicializarNuvem();
         };
-
 
         window.resetarTracosPadrao = function() {
             if(confirm("ATENÇÃO: Isso irá apagar todos os traços cadastrados manualmente nesta unidade e restaurar os traços oficiais. Deseja continuar?")) {
@@ -1663,10 +1658,9 @@ setTimeout(window.inicializarNuvem, 1000);
                     if (window.dbCarregarConfiguracoes) {
                         window.dbCarregarConfiguracoes(`recebimentos_cimento_${localStorage.getItem('usina_unidade') || 'A369'}`, []).then(globalHist => {
                             localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(globalHist));
-                            window.renderizarHistoricoCimento();
-                        });
-                    }
-                    window.renderizarHistoricoCimento();
+                    if (window.atualizarTabelaRecebimentos) window.atualizarTabelaRecebimentos();
+                }
+                if (window.atualizarTabelaRecebimentos) window.atualizarTabelaRecebimentos();
                 }
                 
                 alvo.style.display = 'flex';
@@ -4210,63 +4204,6 @@ window.renderizarHistoricoCimento = function() {
     document.body.insertAdjacentHTML('beforeend', modalRecebimentoHTML);
 
 
-    // Auto-carregar UI do Silo no inicio
-    document.addEventListener("DOMContentLoaded", async function() {
-        // PRIORIDADE 1: Hash na URL (#A369, #A375, #GERAL)
-        // PRIORIDADE 2: LocalStorage
-        let unidadeAlvo = window.location.hash.replace('#', '').toUpperCase();
-        if (!['A369', 'A375', 'GERAL'].includes(unidadeAlvo)) {
-            unidadeAlvo = localStorage.getItem('usina_unidade') || 'A369';
-        } else {
-            localStorage.setItem('usina_unidade', unidadeAlvo);
-        }
-
-        const selectRapido = document.getElementById('select-unidade-rapido');
-        if (selectRapido) selectRapido.value = unidadeAlvo;
-        
-        const displayFixo = document.getElementById('display-unidade-fixa');
-        if (displayFixo) displayFixo.innerText = "USINA " + unidadeAlvo;
-
-        // Força o título correto logo no início
-        const tituloHistorico = document.querySelector('.main-content h2') || document.querySelector('h1');
-        if (tituloHistorico && !tituloHistorico.innerText.includes('Recebimento')) {
-            tituloHistorico.innerText = "Histórico de Produção - " + (unidadeAlvo === 'GERAL' ? 'TODAS AS USINAS' : unidadeAlvo);
-        }
-
-        // Tenta baixar da nuvem primeiro para espelhar
-        if (window.dbBaixarEstoqueSilos) {
-            const cloudData = await window.dbBaixarEstoqueSilos();
-            if (cloudData) window.usina_silos_db = cloudData;
-        }
-        
-        if (window.dbBaixarHistoricoDaNuvem) {
-            await window.dbBaixarHistoricoDaNuvem();
-        }
-        
-        atualizarSilosUI();
-        
-        // Auto-sugestão da próxima NF baseada no histórico
-        try {
-            let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
-            if (hist.length > 0) {
-                let maxNF = 0;
-                hist.forEach(h => {
-                    let nfNum = parseInt(h.nf);
-                    if (!isNaN(nfNum) && nfNum > maxNF) {
-                        maxNF = nfNum;
-                    }
-                });
-                if (maxNF > 0) {
-                    let inputNFElem = document.getElementById('inputNF');
-                    if (inputNFElem) {
-                        inputNFElem.value = maxNF + 1;
-                    }
-                }
-            }
-        } catch(e) {
-            console.error("Erro ao puxar NF do histórico", e);
-        }
-    });
 </script>
 
 
