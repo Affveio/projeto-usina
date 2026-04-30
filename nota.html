@@ -1353,55 +1353,60 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        // --- 1. DETECÇÃO DE UNIDADE (EXECUTAR IMEDIATAMENTE) ---
+        // --- 1. CONFIGURAÇÕES GLOBAIS E UNIDADE ---
+        var unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+        
+        // Atualiza título IMEDIATAMENTE para dar feedback ao usuário
         (function() {
-            const hash = window.location.hash.replace('#', '').toUpperCase();
-            if (['A369', 'A375', 'GERAL'].includes(hash)) {
-                const salva = localStorage.getItem('usina_unidade');
-                if (hash !== salva) {
-                    localStorage.setItem('usina_unidade', hash);
-                    window.location.reload();
-                }
+            const d = document.getElementById('display-unidade-fixa');
+            if(d) d.innerText = "USINA " + unidadeAtual;
+            const h = window.location.hash.replace('#', '').toUpperCase();
+            if (['A369', 'A375', 'GERAL'].includes(h) && h !== unidadeAtual) {
+                localStorage.setItem('usina_unidade', h);
+                window.location.reload();
             }
         })();
-        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
 
-        // --- 2. INICIALIZAÇÃO DE BANCO DE DADOS LOCAL ---
-        let tracosSalvosRaw = localStorage.getItem(`usina_tracos_${unidadeAtual}`);
-        let tracosSalvos = {};
+        // --- 2. INICIALIZAÇÃO DE BANCOS DE DADOS ---
+        var TRACOS_DB, FROTA_DB, MOTORISTAS_DB, MAT_DB;
+        
         try {
-            tracosSalvos = JSON.parse(tracosSalvosRaw || '{}');
-            if (Array.isArray(tracosSalvos)) {
-                let obj = {};
-                tracosSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
-                tracosSalvos = obj;
+            let tSalvosRaw = localStorage.getItem(`usina_tracos_${unidadeAtual}`);
+            let tSalvos = JSON.parse(tSalvosRaw || '{}');
+            if (Array.isArray(tSalvos)) {
+                let obj = {}; tSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
+                tSalvos = obj;
             }
-        } catch(e) { tracosSalvos = {}; }
-        
-        // SANITIZAÇÃO: Garante que os traços locais não estejam corrompidos
-        if (Object.keys(tracosSalvos).length > 0) {
-            Object.keys(tracosSalvos).forEach(nome => {
-                const t = tracosSalvos[nome];
-                if (!t) return;
-                const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
-                if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
-                    Object.assign(t, p);
-                }
-            });
-        }
+            if (Object.keys(tSalvos).length > 0) {
+                Object.keys(tSalvos).forEach(n => {
+                    const t = tSalvos[n]; if(!t) return;
+                    const p = TRACOS_DEFAULT[n] || TRACOS_DEFAULT[n.replace('369','375')] || TRACOS_DEFAULT[n.replace('375','369')];
+                    if (p && (!t.cimento || t.cimento == 0)) Object.assign(t, p);
+                });
+            }
+            TRACOS_DB = (Object.keys(tSalvos).length > 0) ? tSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+        } catch(e) { TRACOS_DB = JSON.parse(JSON.stringify(TRACOS_DEFAULT)); }
+        window.TRACOS_DB = TRACOS_DB;
 
-        window.TRACOS_DB = (Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+        try {
+            let fSalvos = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
+            FROTA_DB = (Object.keys(fSalvos).length > 0) ? fSalvos : FROTA_DEFAULT;
+        } catch(e) { FROTA_DB = FROTA_DEFAULT; }
+        window.FROTA_DB = FROTA_DB;
 
-        let frotaSalva = {}; try { frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}'); } catch(e){}
-        window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
+        try {
+            let mSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
+            MOTORISTAS_DB = (Object.keys(mSalvos).length > 0) ? mSalvos : MOTORISTAS_DEFAULT;
+        } catch(e) { MOTORISTAS_DB = MOTORISTAS_DEFAULT; }
+        window.MOTORISTAS_DB = MOTORISTAS_DB;
 
-        let motoristasSalvos = {}; try { motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}'); } catch(e){}
-        window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
-        
-        let materiaisSalvos = []; try { materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]'); } catch(e){}
-        window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
+        try {
+            let matSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
+            MAT_DB = (Array.isArray(matSalvos) && matSalvos.length > 0) ? matSalvos : Array.from(MATERIAIS_DEFAULT);
+        } catch(e) { MAT_DB = Array.from(MATERIAIS_DEFAULT); }
+        window.MAT_DB = MAT_DB;
 
-        let estado = {
+        var estado = {
             tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
             motoristaSelecionadoObj: { matricula: "60580", nome: "LUAN JONAS DAVI" },
             placaSelecionadaObj: { al: "AL-7312", placa: "TGK8G25" },

@@ -1393,69 +1393,45 @@ setTimeout(window.inicializarNuvem, 1000);
             "AL-9597": { placa: "TFH5B45", ativo: true }
         };
 
-        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
+        var unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
 
-        let tracosSalvosRaw = localStorage.getItem(`usina_tracos_${unidadeAtual}`);
-        let tracosSalvos = {};
+        var TRACOS_DB, FROTA_DB, MOTORISTAS_DB, MAT_DB;
+
         try {
-            tracosSalvos = JSON.parse(tracosSalvosRaw || '{}');
-            if (Array.isArray(tracosSalvos)) {
-                let obj = {};
-                tracosSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
-                tracosSalvos = obj;
+            let tSalvosRaw = localStorage.getItem(`usina_tracos_${unidadeAtual}`);
+            let tSalvos = JSON.parse(tSalvosRaw || '{}');
+            if (Array.isArray(tSalvos)) {
+                let obj = {}; tSalvos.forEach(t => { if(t && t.nome) obj[t.nome] = t; });
+                tSalvos = obj;
             }
-        } catch(e) { tracosSalvos = {}; }
-        
-        if (Object.keys(tracosSalvos).length > 0) {
-            Object.keys(tracosSalvos).forEach(nome => {
-                const t = tracosSalvos[nome];
-                if (!t) return;
-                const p = TRACOS_DEFAULT[nome] || TRACOS_DEFAULT[nome.replace('369', '375')] || TRACOS_DEFAULT[nome.replace('375', '369')];
-                if (p && (!t.cimento || t.cimento === 0 || t.cimento === "0")) {
-                    Object.assign(t, p);
-                }
-            });
-        }
-        window.TRACOS_DB = (Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+            if (Object.keys(tSalvos).length > 0) {
+                Object.keys(tSalvos).forEach(n => {
+                    const t = tSalvos[n]; if(!t) return;
+                    const p = TRACOS_DEFAULT[n] || TRACOS_DEFAULT[n.replace('369','375')] || TRACOS_DEFAULT[n.replace('375','369')];
+                    if (p && (!t.cimento || t.cimento == 0)) Object.assign(t, p);
+                });
+            }
+            TRACOS_DB = (Object.keys(tSalvos).length > 0) ? tSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+        } catch(e) { TRACOS_DB = JSON.parse(JSON.stringify(TRACOS_DEFAULT)); }
+        window.TRACOS_DB = TRACOS_DB;
 
-        let frotaSalva = {}; try { frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}'); } catch(e){}
-        window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
+        try {
+            let fSalvos = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
+            FROTA_DB = (Object.keys(fSalvos).length > 0) ? fSalvos : FROTA_DEFAULT;
+        } catch(e) { FROTA_DB = FROTA_DEFAULT; }
+        window.FROTA_DB = FROTA_DB;
 
-        const MOTORISTAS_DEFAULT = {
-            "57888": { nome: "JOSE EDIVALDO CONCEICAO OLIVEIRA", ativo: true },
-            "60045": { nome: "JOSE FELIPE GONÇALO FERREIRA", ativo: true },
-            "60022": { nome: "ARIANOR ALVES", ativo: true },
-            "60121": { nome: "CARLOS EUGENIO VITORINO DE MEDEIROS", ativo: true },
-            "58264": { nome: "DAMIAO LUCIANO DA SILVA", ativo: true },
-            "60580": { nome: "LUAN JONAS DAVI", ativo: true },
-            "58052": { nome: "EDSON LUIZ MIRANDA", ativo: true },
-            "57506": { nome: "WILLIAN ARMANDO MARCANO", ativo: true },
-            "57744": { nome: "FLAVIO DOS SANTOS ESTACIO", ativo: true },
-            "59935": { nome: "JOSE ADIEL DE SOUZA DE BRITO", ativo: true },
-            "60042": { nome: "JOSE SERGIO", ativo: true },
-            "60972": { nome: "MANOEL ALVES DE LIMA", ativo: true },
-            "58372": { nome: "VALDEITON CARVALHO", ativo: true }
-        };
+        try {
+            let mSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
+            MOTORISTAS_DB = (Object.keys(mSalvos).length > 0) ? mSalvos : MOTORISTAS_DEFAULT;
+        } catch(e) { MOTORISTAS_DB = MOTORISTAS_DEFAULT; }
+        window.MOTORISTAS_DB = MOTORISTAS_DB;
 
-        let motoristasSalvos = {}; try { motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}'); } catch(e){}
-        window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
-        
-        const MATERIAIS_DEFAULT = [
-            { id: "cimento", label: "Cimento CP II-F 40", unit: "KG", type: "cement" },
-            { id: "areia", label: "Areia Natural", unit: "KG", type: "aggregate" },
-            { id: "agua", label: "Água", unit: "L", type: "water" },
-            { id: "brita0", label: "Brita 0", unit: "KG", type: "aggregate" },
-            { id: "brita1", label: "Brita 1", unit: "KG", type: "aggregate" },
-            { id: "mira410", label: "Mira 410", unit: "KG", type: "additive" },
-            { id: "miraflow", label: "Mira Flow 397", unit: "KG", type: "additive" },
-            { id: "recover", label: "Recover", unit: "KG", type: "additive" },
-            { id: "retard", label: "Retard Centralment 200", unit: "KG", type: "additive" },
-            { id: "viscocrete", label: "Viscocrete 6090", unit: "KG", type: "additive" },
-            { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
-        ];
-
-        let materiaisSalvos = []; try { materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]'); } catch(e){}
-        window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
+        try {
+            let matSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
+            MAT_DB = (Array.isArray(matSalvos) && matSalvos.length > 0) ? matSalvos : Array.from(MATERIAIS_DEFAULT);
+        } catch(e) { MAT_DB = Array.from(MATERIAIS_DEFAULT); }
+        window.MAT_DB = MAT_DB;
 
         let estado = {
             tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
