@@ -1356,41 +1356,47 @@ setTimeout(window.inicializarNuvem, 1000);
             { id: "gelo", label: "Gelo", unit: "LTS", type: "ice" }
         ];
 
-        // --- REPARO DE EMERGÊNCIA (Executa antes de qualquer inicialização) ---
-        // --- 1. DETECÇÃO E PADRONIZAÇÃO DE UNIDADE (EXECUTAR IMEDIATAMENTE) ---
+        // --- 1. DETECÇÃO DE UNIDADE (EXECUTAR IMEDIATAMENTE) ---
+        const getUnidadeSegura = () => {
+            const hash = window.location.hash.replace('#', '').toUpperCase();
+            if (['A369', 'A375', 'GERAL'].includes(hash)) return hash;
+            const salva = localStorage.getItem('usina_unidade');
+            if (['A369', 'A375', 'GERAL'].includes(salva)) return salva;
+            return 'A375';
+        };
+
         (function() {
-            const hashUnidade = window.location.hash.replace('#', '').toUpperCase();
-            const unidadeSalva = localStorage.getItem('usina_unidade');
-            const unidadePadrao = 'A375';
-            
-            if (hashUnidade && ['A369', 'A375', 'GERAL'].includes(hashUnidade)) {
-                if (hashUnidade !== unidadeSalva) {
-                    localStorage.setItem('usina_unidade', hashUnidade);
-                    window.location.reload();
-                }
-            } else if (!unidadeSalva) {
-                localStorage.setItem('usina_unidade', unidadePadrao);
+            const atual = getUnidadeSegura();
+            const salva = localStorage.getItem('usina_unidade');
+            if (atual !== salva) {
+                localStorage.setItem('usina_unidade', atual);
+                console.log("🔄 Troca de unidade detectada, recarregando...");
+                window.location.reload();
             }
         })();
 
-        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-        // ----------------------------------------------------------------------
+        const unidadeAtual = getUnidadeSegura();
+        // -------------------------------------------------------
 
-        // --- 2. CARREGAMENTO DE DADOS LOCAIS ---
-        let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
-        window.TRACOS_DB = (tracosSalvos && Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
+        // --- 2. CARREGAMENTO DE DADOS (Scoped by Unit) ---
+        const carregarDadosLocais = () => {
+            let tracosSalvos = JSON.parse(localStorage.getItem(`usina_tracos_${unidadeAtual}`) || '{}');
+            window.TRACOS_DB = (Object.keys(tracosSalvos).length > 0) ? tracosSalvos : JSON.parse(JSON.stringify(TRACOS_DEFAULT));
 
-        let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
-        window.FROTA_DB = (frotaSalva && Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
+            let frotaSalva = JSON.parse(localStorage.getItem(`usina_frota_${unidadeAtual}`) || '{}');
+            window.FROTA_DB = (Object.keys(frotaSalva).length > 0) ? frotaSalva : FROTA_DEFAULT;
 
-        let motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
-        window.MOTORISTAS_DB = (motoristasSalvos && Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
-        
-        let materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
-        window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
+            let motoristasSalvos = JSON.parse(localStorage.getItem(`usina_motoristas_${unidadeAtual}`) || '{}');
+            window.MOTORISTAS_DB = (Object.keys(motoristasSalvos).length > 0) ? motoristasSalvos : MOTORISTAS_DEFAULT;
+            
+            let materiaisSalvos = JSON.parse(localStorage.getItem(`usina_materiais_${unidadeAtual}`) || '[]');
+            window.MAT_DB = (Array.isArray(materiaisSalvos) && materiaisSalvos.length > 0) ? materiaisSalvos : Array.from(MATERIAIS_DEFAULT);
+        };
+
+        carregarDadosLocais();
 
         let estado = {
-            tracoSelecionado: "AT-375-CON.15.230.REV.00-3H",
+            tracoSelecionado: unidadeAtual === 'A369' ? "AT-369-CON.15.230.REV.00-3H" : "AT-375-CON.15.230.REV.00-3H",
             motoristaSelecionadoObj: { matricula: "60580", nome: "LUAN JONAS DAVI" },
             placaSelecionadaObj: { al: "AL-7312", placa: "TGK8G25" },
             senhaLiberada: false,
@@ -2353,9 +2359,9 @@ setTimeout(window.inicializarNuvem, 1000);
             
             // Atualizar Headers da Tabela
             const rowHeader = document.getElementById('row-header-materiais');
-            if(rowHeader) {
-                rowHeader.innerHTML = '<th></th><th></th><th></th><th></th><th></th><th></th><th></th>'; // Placeholders para colunas iniciais
-                MAT_DB.forEach(mat => {
+            if(rowHeader && Array.isArray(window.MAT_DB)) {
+                rowHeader.innerHTML = '<th></th><th></th><th></th><th></th><th></th><th></th><th></th>'; 
+                window.MAT_DB.forEach(mat => {
                     if (!mat || !mat.label) return;
                     const th = document.createElement('th');
                     th.innerText = mat.label.substring(0, 4).toUpperCase();
