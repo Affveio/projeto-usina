@@ -488,36 +488,42 @@ window.inicializarNuvem = async () => {
             { id: `materiais_${unidadeAtual}`, key: `usina_materiais_${unidadeAtual}` }
         ];
 
-        for (const config of configs) {
-            const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
-            
-            // SÓ SOBRESCREVE SE TIVER DADOS REAIS NA NUVEM
-            if (dadosNuvem && (Array.isArray(dadosNuvem) ? dadosNuvem.length > 0 : Object.keys(dadosNuvem).length > 0)) {
+        try {
+            for (const config of configs) {
+                const dadosNuvem = await window.dbCarregarConfiguracoes(config.id, null);
                 
-                // Antes de sobrescrever, verifica se os dados locais não são "mais ricos" (ex: mais materiais)
-                const dadosLocais = JSON.parse(localStorage.getItem(config.key) || 'null');
-                if (config.id.startsWith('materiais') && dadosLocais && Array.isArray(dadosLocais)) {
-                    if (dadosLocais.length > dadosNuvem.length) {
-                        console.log(`⚠️ Nuvem tem MENOS materiais que local (${dadosNuvem.length} vs ${dadosLocais.length}). Mantendo local.`);
-                        continue; 
+                // SÓ SOBRESCREVE SE TIVER DADOS REAIS NA NUVEM
+                if (dadosNuvem && (Array.isArray(dadosNuvem) ? dadosNuvem.length > 0 : Object.keys(dadosNuvem).length > 0)) {
+                    
+                    // Antes de sobrescrever, verifica se os dados locais não são "mais ricos" (ex: mais materiais)
+                    const localRaw = localStorage.getItem(config.key);
+                    const dadosLocais = localRaw ? JSON.parse(localRaw) : null;
+                    
+                    if (config.id.startsWith('materiais') && Array.isArray(dadosLocais) && Array.isArray(dadosNuvem)) {
+                        if (dadosLocais.length > dadosNuvem.length) {
+                            console.log(`⚠️ Nuvem tem MENOS materiais que local (${dadosNuvem.length} vs ${dadosLocais.length}). Mantendo local.`);
+                            continue; 
+                        }
                     }
-                }
 
-                console.log(`☁️ Sincronizando ${config.id} da nuvem para o local...`);
-                localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
+                    console.log(`☁️ Sincronizando ${config.id} da nuvem para o local...`);
+                    localStorage.setItem(config.key, JSON.stringify(dadosNuvem));
 
-                if (config.id.startsWith('tracos')) { 
-                    window.TRACOS_DB = dadosNuvem; 
-                    if(window.popularTracos) popularTracos(); 
+                    if (config.id.startsWith('tracos')) { 
+                        window.TRACOS_DB = dadosNuvem; 
+                        if(window.popularTracos) popularTracos(); 
+                    }
+                    if (config.id.startsWith('frota')) { window.FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
+                    if (config.id.startsWith('motoristas')) { window.MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
+                    if (config.id.startsWith('materiais')) { window.MAT_DB = Array.isArray(dadosNuvem) ? dadosNuvem : window.MAT_DB; if(window.popularBarraMateriais) popularBarraMateriais(); }
+                    if (config.id.startsWith('umidade')) { if(window.carregarUmidadesSalvas) carregarUmidadesSalvas(); }
+                    if (config.id.startsWith('recebimentos_cimento')) { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
+                } else {
+                    console.log(`☁️ Mantendo dados locais para ${config.id} pois a nuvem retornou vazio.`);
                 }
-                if (config.id.startsWith('frota')) { window.FROTA_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
-                if (config.id.startsWith('motoristas')) { window.MOTORISTAS_DB = dadosNuvem; if(window.popularFrota) popularFrota(); }
-                if (config.id.startsWith('materiais')) { window.MAT_DB = dadosNuvem; if(window.popularBarraMateriais) popularBarraMateriais(); }
-                if (config.id.startsWith('umidade')) { if(window.carregarUmidadesSalvas) carregarUmidadesSalvas(); }
-                if (config.id.startsWith('recebimentos_cimento')) { if(window.renderizarHistoricoCimento) renderizarHistoricoCimento(); }
-            } else {
-                console.log(`☁️ Mantendo dados locais para ${config.id} pois a nuvem retornou vazio.`);
             }
+        } catch (err) {
+            console.error("Erro crítico na inicialização da nuvem:", err);
         }
     }
 };
