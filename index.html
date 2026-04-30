@@ -4114,25 +4114,29 @@ setTimeout(window.inicializarNuvem, 1000);
             window._is_recebimento_modal = true;
             window.abastecerSilo(silo, liquido);
             window._is_recebimento_modal = false;
-            let historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
-            historico.unshift({ data, nf, silo, bruto, tara, liquido, timestamp: Date.now() });
-            localStorage.setItem('usina_recebimentos_cimento', JSON.stringify(historico));
-            if (window.dbSalvarConfiguracoes) await window.dbSalvarConfiguracoes('recebimentos_cimento', historico);
-            alert(`${silo} abastecido com sucesso!`);
-        }
-        window.fecharModalRecebimento();
-        window.renderizarHistoricoCimento();
-    };
+        const uniAt = localStorage.getItem('usina_unidade') || 'A375';
+        const keyRec = `usina_recebimentos_cimento_${uniAt}`;
+        let historico = JSON.parse(localStorage.getItem(keyRec) || '[]');
+        historico.unshift({ data, nf, silo, bruto, tara, liquido, unidade: uniAt, timestamp: Date.now() });
+        localStorage.setItem(keyRec, JSON.stringify(historico));
+        if (window.dbSalvarConfiguracoes) await window.dbSalvarConfiguracoes(`recebimentos_cimento_${uniAt}`, historico);
+        alert(`${silo} abastecido com sucesso!`);
+    }
+    window.fecharModalRecebimento();
+    window.renderizarHistoricoCimento();
+};
 
-    window.renderizarHistoricoCimento = function() {
-        const historico = JSON.parse(localStorage.getItem('usina_recebimentos_cimento') || '[]');
-        const container = document.getElementById('tbodyRecebimentos');
-        if (!container) return;
-        container.innerHTML = historico.map((rec, index) => {
-            // Filtro de Usina no Recebimento
-            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A375';
-            const uniRec = rec.unidade || 'A369';
-            if (unidadeAtual !== 'GERAL' && uniRec !== unidadeAtual) return '';
+window.renderizarHistoricoCimento = function() {
+    const uniAt = localStorage.getItem('usina_unidade') || 'A375';
+    const keyRec = `usina_recebimentos_cimento_${uniAt}`;
+    const historico = JSON.parse(localStorage.getItem(keyRec) || '[]');
+    const container = document.getElementById('tbodyRecebimentos');
+    if (!container) return;
+    container.innerHTML = historico.map((rec, index) => {
+        // Filtro de Usina no Recebimento
+        const unidadeAtual = uniAt;
+        const uniRec = rec.unidade || unidadeAtual;
+        if (unidadeAtual !== 'GERAL' && uniRec !== unidadeAtual) return '';
 
             // FILTRO DE BUSCA
             const busca = (document.getElementById('buscaRecebimento')?.value || "").toLowerCase();
