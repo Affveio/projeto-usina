@@ -42,8 +42,8 @@
             if (window.isSyncing) return { success: false };
             try {
                 const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
-                // Baixamos um pouco mais (200) para garantir que pegamos tudo que precisa ser migrado/filtrado
-                let url = `${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=200`;
+                // Baixamos todo o histórico necessário (10000) para garantir que pegamos tudo
+                let url = `${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=10000`;
 
                 const resNotas = await fetch(url, {
                     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
@@ -2133,16 +2133,30 @@
 
     <main id="aba-historico" class="main-content"
         style="display: none; padding: 20px 30px; background: #f4f7fb; overflow-y: auto; overflow-x: hidden; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 100%;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; flex-wrap: wrap; gap: 10px;">
             <h2 style="color: #1e293b; font-size: 20px; font-weight: 700;">Histórico Geral de Produção</h2>
-            <button onclick="exportarCSV()"
-                style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round" viewBox="0 0 24 24">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                </svg>
-                Baixar Excel (CSV)
-            </button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #64748b;">De:</label>
+                    <input type="date" id="histDataIni" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #64748b;">Até:</label>
+                    <input type="date" id="histDataFim" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit;">
+                </div>
+                <button onclick="window.carregarHistorico()" 
+                    style="background: #3b82f6; color: white; border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);">
+                    Filtrar
+                </button>
+                <button onclick="exportarCSV()"
+                    style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                    </svg>
+                    Baixar Excel (CSV)
+                </button>
+            </div>
         </div>
 
         <div style="background: white; border-radius: 12px; padding: 0; border: 1px solid #e2e8f0; display: flex; flex-direction: column; box-shadow: 0 4px 15px rgba(0,0,0,0.02); overflow-x: auto; max-width: 100%; white-space: nowrap; height: calc(100vh - 180px); min-height: 400px; cursor: grab;"
@@ -2869,11 +2883,31 @@
             tBody.innerHTML = "";
             let hist = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
 
-            // --- FILTRO DE USINA ---
+            // --- FILTRO DE DATA E USINA ---
+            const dtIniStr = document.getElementById('histDataIni') ? document.getElementById('histDataIni').value : '';
+            const dtFimStr = document.getElementById('histDataFim') ? document.getElementById('histDataFim').value : '';
+            const dtIni = dtIniStr ? new Date(dtIniStr + "T00:00:00") : null;
+            const dtFim = dtFimStr ? new Date(dtFimStr + "T23:59:59") : null;
+
             const unidadeFiltro = localStorage.getItem('usina_unidade') || 'A369';
-            if (unidadeFiltro !== 'GERAL') {
-                hist = hist.filter(n => n.unidade === unidadeFiltro);
-            }
+            
+            hist = hist.filter(nota => {
+                // Filtro de Usina
+                if (unidadeFiltro !== 'GERAL' && nota.unidade !== unidadeFiltro) return false;
+                
+                // Filtro de Data
+                if (dtIni || dtFim) {
+                    let partes = (nota.data || "").split('/');
+                    if (partes.length === 3) {
+                        let dataNota = new Date(partes[2], partes[1] - 1, partes[0]);
+                        if (dtIni && dataNota < dtIni) return false;
+                        if (dtFim && dataNota > dtFim) return false;
+                    } else {
+                        return false; // Se não tem data válida e filtramos, exclui
+                    }
+                }
+                return true;
+            });
 
             // Atualizar Título com a Unidade Atual para evitar confusão
             const tituloHistorico = document.querySelector('.main-content h2') || document.querySelector('h1');
@@ -2991,11 +3025,31 @@
             const materiaisAtuais = JSON.parse(localStorage.getItem('usina_materials')) || JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
             let hist = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
 
-            // Filtro aplicado ao exportar também
+            // --- FILTRO DE DATA E USINA APLICADO AO EXPORTAR ---
+            const dtIniStr = document.getElementById('histDataIni') ? document.getElementById('histDataIni').value : '';
+            const dtFimStr = document.getElementById('histDataFim') ? document.getElementById('histDataFim').value : '';
+            const dtIni = dtIniStr ? new Date(dtIniStr + "T00:00:00") : null;
+            const dtFim = dtFimStr ? new Date(dtFimStr + "T23:59:59") : null;
+
             const unidadeFiltro = localStorage.getItem('usina_unidade') || 'A369';
-            if (unidadeFiltro !== 'GERAL') {
-                hist = hist.filter(n => n.unidade === unidadeFiltro);
-            }
+            
+            hist = hist.filter(nota => {
+                // Filtro de Usina
+                if (unidadeFiltro !== 'GERAL' && nota.unidade !== unidadeFiltro) return false;
+                
+                // Filtro de Data
+                if (dtIni || dtFim) {
+                    let partes = (nota.data || "").split('/');
+                    if (partes.length === 3) {
+                        let dataNota = new Date(partes[2], partes[1] - 1, partes[0]);
+                        if (dtIni && dataNota < dtIni) return false;
+                        if (dtFim && dataNota > dtFim) return false;
+                    } else {
+                        return false;
+                    }
+                }
+                return true;
+            });
 
             if (hist.length === 0) return alert("Nenhuma nota gerada ainda no histórico.");
 
@@ -3156,7 +3210,9 @@
             }
 
             let fmt = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-            let silosDB = window.usina_silos_db || JSON.parse(localStorage.getItem('usina_silos_db') || '{"Silo 1": 0, "Silo 2": 0}');
+            let unId = localStorage.getItem('usina_unidade') || 'A369';
+            let silosHist = JSON.parse(localStorage.getItem('usina_silos_historico_' + unId) || '{}');
+            let silosDB = silosHist[dataPt] || window.usina_silos_db || JSON.parse(localStorage.getItem('usina_silos_db') || '{"Silo 1": 0, "Silo 2": 0}');
 
             const containerKpis = document.getElementById('container-kpis-resumo');
             if (containerKpis) {
@@ -4101,21 +4157,25 @@
                 const sp = (id, val) => { let el = preview.querySelector('#' + id); if (el) el.innerText = val; };
 
                 sp('p_nf', nota.nf);
-                sp('p_nf2', nota.nf);
-                sp('p_data', nota.data);
-                sp('p_hora_mistura', nota.hora_mistura || '');
+                sp('p_nf_bottom', nota.nf);
+                sp('p_data_emissao', nota.data);
+                sp('p_data_saida', nota.data);
+                sp('p_inicio_mistura', nota.hora_mistura || '');
                 sp('p_hora_saida', nota.hora_saida || '');
-                sp('p_al', nota.al);
+                sp('p_betoneira', nota.al);
                 sp('p_placa', nota.placa);
                 sp('p_motorista', nota.motorista);
                 sp('p_remotorista', nota.matricula);
-                sp('p_local', nota.frente);
-                sp('p_traco', nota.traco);
-                sp('p_volume', nota.volume);
+                sp('p_observacao', nota.frente);
+                sp('p_descricao', nota.traco);
+                sp('p_volume', parseFloat(nota.volume).toFixed(1));
+                sp('p_volume_dmc', parseFloat(nota.volume).toFixed(1));
+                sp('p_consumo', traco.cimento || "---");
+                sp('p_fck_header', traco.fck || "---");
                 sp('p_slump', traco.slump_ini && traco.slump_fim ? `${traco.slump_ini} A ${traco.slump_fim}` : '');
-                sp('p_fck', traco.fck ? `${traco.fck} MPA` : '');
-                sp('p_dmc', '19 MM');
-                sp('p_classe', traco.classe || '');
+                sp('p_classe_val', traco.classe || "---");
+                sp('p_dmc_b0', (traco.brita0 > 0) ? "9,5mm" : "");
+                sp('p_dmc_b1', (traco.brita1 > 0) ? "19,00mm" : "");
                 sp('p_silo', nota.silo || '');
                 sp('p_agua_colocar', Math.round(nota.agua_obra || 0));
                 sp('p_agua_colocada', '');
@@ -5358,6 +5418,23 @@
             if (document.getElementById('visorSilo1')) document.getElementById('visorSilo1').innerHTML = fmt(window.usina_silos_db['Silo 1'] || 0) + ' <span style="font-size: 11px; color: #94a3b8;">KG</span>';
             if (document.getElementById('visorSilo2')) document.getElementById('visorSilo2').innerHTML = fmt(window.usina_silos_db['Silo 2'] || 0) + ' <span style="font-size: 11px; color: #94a3b8;">KG</span>';
             localStorage.setItem('usina_silos_db', JSON.stringify(window.usina_silos_db));
+
+            // Salva o snapshot diário dos silos
+            try {
+                let pDt = new Date();
+                let m = (pDt.getMonth() + 1).toString().padStart(2, '0');
+                let d = pDt.getDate().toString().padStart(2, '0');
+                let hojePt = `${d}/${m}/${pDt.getFullYear()}`;
+                let unId = localStorage.getItem('usina_unidade') || 'A369';
+                let silosHist = JSON.parse(localStorage.getItem('usina_silos_historico_' + unId) || '{}');
+                silosHist[hojePt] = {
+                    'Silo 1': window.usina_silos_db['Silo 1'] || 0,
+                    'Silo 2': window.usina_silos_db['Silo 2'] || 0
+                };
+                localStorage.setItem('usina_silos_historico_' + unId, JSON.stringify(silosHist));
+            } catch (err) {
+                console.error("Erro ao salvar snapshot diário dos silos:", err);
+            }
 
             // Sincroniza com a nuvem (Supabase)
             if (window.dbAtualizarEstoqueSilos) window.dbAtualizarEstoqueSilos();
