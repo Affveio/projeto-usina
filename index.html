@@ -100,7 +100,14 @@
                         'Content-Type': 'application/json',
                         'Prefer': 'resolution=merge-duplicates'
                     },
-                    body: JSON.stringify({ id: `${tipo}_${unidade}`, dados, updated_at: new Date().toISOString() })
+                    body: JSON.stringify({
+                        id: `${tipo}_${unidade}`,
+                        unidade: unidade,
+                        tipo: tipo,
+                        dados: dados,
+                        updated_at: new Date().toISOString(),
+                        atualizado_em: new Date().toISOString()
+                    })
                 });
                 return { success: true };
             } catch (e) { console.error(`Erro ao salvar config (${tipo}):`, e); return { success: false }; }
@@ -109,7 +116,7 @@
         window.dbBaixarConfiguracoes = async () => {
             const unidade = localStorage.getItem('usina_unidade') || 'A369';
             try {
-                const ids = [`tracos_${unidade}`, `frota_${unidade}`, `motoristas_${unidade}`, `recebimentos_cimento_${unidade}`];
+                const ids = [`tracos_${unidade}`, `frota_${unidade}`, `motoristas_${unidade}`, `recebimentos_cimento_${unidade}`, `materiais_${unidade}`];
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=in.(${ids.join(',')})&select=*`, {
                     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
                 });
@@ -117,10 +124,10 @@
                     const configs = await response.json();
                     const objConfigs = {};
                     configs.forEach(c => {
-                        if (c.id === `tracos_${unidade}`) objConfigs.tracos = c.dados;
-                        if (c.id === `frota_${unidade}`) objConfigs.frota = c.dados;
-                        if (c.id === `motoristas_${unidade}`) objConfigs.motoristas = c.dados;
-                        if (c.id === `recebimentos_cimento_${unidade}`) objConfigs.recebimentos_cimento = c.dados;
+                        const key = c.tipo || (c.id ? c.id.replace(`_${unidade}`, '') : '');
+                        if (key) {
+                            objConfigs[key] = c.dados;
+                        }
                     });
 
                     if (objConfigs.tracos) {
@@ -141,10 +148,15 @@
                     if (objConfigs.recebimentos_cimento) {
                         localStorage.setItem('usina_recebimentos_cimento_' + unidade, JSON.stringify(objConfigs.recebimentos_cimento));
                     }
+                    if (objConfigs.materiais) {
+                        localStorage.setItem('usina_materiais_' + unidade, JSON.stringify(objConfigs.materiais));
+                        window.MAT_DB = objConfigs.materiais;
+                    }
 
                     if (window.popularTracos) window.popularTracos();
                     if (window.popularFrota) window.popularFrota();
                     if (window.renderizarHistoricoCimento) window.renderizarHistoricoCimento();
+                    if (window.carregarHistorico) window.carregarHistorico();
                     return objConfigs;
                 }
             } catch (e) { console.error("Erro ao baixar configurações:", e); }
@@ -479,11 +491,30 @@
             if (window.isSyncing) return { success: false };
             window.isSyncing = true;
 
+            const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+
+            // --- Sincroniza também as configurações locais (materiais, traços, frota, motoristas) para a nuvem ---
             try {
-                let notasRaw = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
+                if (window.dbSalvarConfiguracoes) {
+                    const localMats = JSON.parse(localStorage.getItem('usina_materiais_' + unidadeAtual) || '[]');
+                    if (localMats.length > 0) await window.dbSalvarConfiguracoes('materiais', localMats);
+
+                    const localTracos = JSON.parse(localStorage.getItem('usina_tracos_' + unidadeAtual) || '{}');
+                    if (Object.keys(localTracos).length > 0) await window.dbSalvarConfiguracoes('tracos', localTracos);
+
+                    const localFrota = JSON.parse(localStorage.getItem('usina_frota_' + unidadeAtual) || '{}');
+                    if (Object.keys(localFrota).length > 0) await window.dbSalvarConfiguracoes('frota', localFrota);
+
+                    const localMotoristas = JSON.parse(localStorage.getItem('usina_motoristas_' + unidadeAtual) || '{}');
+                    if (Object.keys(localMotoristas).length > 0) await window.dbSalvarConfiguracoes('motoristas', localMotoristas);
+                }
+            } catch (e) { console.error("Erro ao sincronizar configurações locais para a nuvem:", e); }
+            // ------------------------------------------------------------------------------------------------------
+
+            try {
+                let notasRaw = JSON.parse(localStorage.getItem('usina_historico_' + unidadeAtual) || localStorage.getItem('usina_historico') || '[]');
                 if (notasRaw.length === 0) { window.isSyncing = false; return { success: true }; }
 
-                const unidadeAtual = localStorage.getItem('usina_unidade') || 'NÃO DEFINIDA';
                 const todasAsChavesSet = new Set(["id", "unidade", "timestamp", "nf", "data", "agua", "gelo", "local", "frente", "motorista", "placa", "al", "hora_mistura", "hora_saida", "traco", "volume", "betoneira", "materiais"]);
 
                 notasRaw.forEach(n => {
@@ -621,6 +652,9 @@
             const url = new URL(window.location.href);
             url.hash = novaUnidade;
             window.location.href = url.href;
+            
+            // Recarrega fisicamente a página para atualizar o estado global limpo
+            window.location.reload();
         };
     </script>
     <script>// cloud_v2.js - VERSÃO MULTI-USINAS + BACKUP
@@ -2424,6 +2458,11 @@
 
         window.TRACOS_DEFAULT = TRACOS_DEFAULT;
 
+        // Determinar a unidade atual a partir do hash da URL ou do localStorage
+        let hashUnidade = window.location.hash.replace('#', '').toUpperCase();
+        if (['A369', 'A375', 'GERAL'].includes(hashUnidade)) {
+            localStorage.setItem('usina_unidade', hashUnidade);
+        }
         const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
         window.estaEditandoTraco = null;
 
@@ -2670,7 +2709,9 @@
 
         window.updateMat = function (index, key, value) {
             MAT_DB[index][key] = value;
-            localStorage.setItem('usina_materiais_' + (localStorage.getItem('usina_unidade') || 'A369'), JSON.stringify(MAT_DB));
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            localStorage.setItem('usina_materiais_' + u, JSON.stringify(MAT_DB));
+            if (window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes('materiais', MAT_DB);
             // Força atualização da interface
             popularBarraMateriais();
             popularTracos();
@@ -2689,7 +2730,9 @@
             if (MAT_DB.find(m => m.id === id)) { alert("Este ID já existe!"); return; }
 
             MAT_DB.push({ id, label, unit, type });
-            localStorage.setItem('usina_materiais_' + (localStorage.getItem('usina_unidade') || 'A369'), JSON.stringify(MAT_DB));
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            localStorage.setItem('usina_materiais_' + u, JSON.stringify(MAT_DB));
+            if (window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes('materiais', MAT_DB);
 
             document.getElementById('newMatId').value = '';
             document.getElementById('newMatLabel').value = '';
@@ -2699,18 +2742,18 @@
             popularTracos();
             popularBarraMateriais();
             alert("Material adicionado com sucesso!");
-
         };
 
         window.removerMaterial = function (index) {
             if (confirm("Deseja realmente excluir este material? Isso não apagará os valores nos traços já salvos, mas ele não aparecerá mais nos formulários.")) {
                 MAT_DB.splice(index, 1);
-                localStorage.setItem('usina_materiais_' + (localStorage.getItem('usina_unidade') || 'A369'), JSON.stringify(MAT_DB));
+                const u = localStorage.getItem('usina_unidade') || 'A369';
+                localStorage.setItem('usina_materiais_' + u, JSON.stringify(MAT_DB));
+                if (window.dbSalvarConfiguracoes) window.dbSalvarConfiguracoes('materiais', MAT_DB);
                 renderConfigMateriais();
                 popularCamposCadastroTraco();
                 popularTracos();
                 popularBarraMateriais();
-
             }
         };
 
@@ -2801,7 +2844,7 @@
                 const tracoObj = TRACOS_DB[tracoNome];
                 const volume = parseFloat(document.getElementById('inputVolume').value) || 0;
 
-                const umids = JSON.parse(localStorage.getItem('usina_umidade_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_umidade') || '{}');
+                const umids = JSON.parse(localStorage.getItem('usina_umidade_UNIFICADA') || localStorage.getItem('usina_umidade_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_umidade') || '{}');
 
                 const nota = {
                     data: document.getElementById('inputDate').value,
@@ -2827,7 +2870,10 @@
                     silo: document.getElementById('inputSilo').value,
                     timestamp: new Date().getTime(),
                     materiais: {},
-                    unidade: localStorage.getItem('usina_unidade') || 'A369'
+                    unidade: localStorage.getItem('usina_unidade') || 'A369',
+                    umid_areia: parseFloat(umids.areia || 0),
+                    umid_brita0: parseFloat(umids.brita0 || 0),
+                    umid_brita1: parseFloat(umids.brita1 || 0)
                 };
 
                 // --- MATEMÁTICA DA ÁGUA (SOLICITADA PELO USUÁRIO) ---
@@ -2856,6 +2902,13 @@
                     if (mat.type === 'aggregate') totalAguaRetida += aguaRet;
                 });
                 nota.agua_retida = totalAguaRetida * volume;
+
+                // Salva umidades no JSONB de materiais para sincronização na nuvem
+                nota.materiais.umidades = {
+                    areia: nota.umid_areia,
+                    brita0: nota.umid_brita0,
+                    brita1: nota.umid_brita1
+                };
 
                 // --- CORREÇÃO CRÍTICA: SALVAR ÁGUA DA MISTURA (EX: 510) ---
                 const aguaTeorica = (tracoObj ? (tracoObj.agua || 0) : 0) * volume;
@@ -2945,12 +2998,19 @@
                 rowHeader.innerHTML += `
                     <th style="min-width: 60px;">SILO</th>
                     <th style="min-width: 80px; background:#e0f2fe; color:#075985;">AGUA RETIDA</th>
+                    <th style="min-width: 80px; background:#e6f4ea; color:#137333; font-weight:bold;">UMID. AREIA (%)</th>
+                    <th style="min-width: 80px; background:#e6f4ea; color:#137333; font-weight:bold;">UMID. BRITA 0 (%)</th>
+                    <th style="min-width: 80px; background:#e6f4ea; color:#137333; font-weight:bold;">UMID. BRITA 1 (%)</th>
                 `;
             }
 
 
             hist.forEach(n => {
                 const f = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+                const fUmid = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+                const umidAreia = n.umid_areia || (n.materiais && n.materiais.umidades ? n.materiais.umidades.areia : 0);
+                const umidBrita0 = n.umid_brita0 || (n.materiais && n.materiais.umidades ? n.materiais.umidades.brita0 : 0);
+                const umidBrita1 = n.umid_brita1 || (n.materiais && n.materiais.umidades ? n.materiais.umidades.brita1 : 0);
                 let tr = document.createElement('tr');
 
                 let htmlMats = '';
@@ -2983,6 +3043,9 @@
                     ${htmlMats}
                     <td style="font-size:11px;">${n.silo || '—'}</td>
                     <td style="font-size:11px; background:#e0f2fe; color:#075985; font-weight:bold;">${f(n.agua_retida)}</td>
+                    <td style="font-size:11px; background:#e6f4ea; color:#137333; font-weight:bold;">${fUmid(umidAreia)}</td>
+                    <td style="font-size:11px; background:#e6f4ea; color:#137333; font-weight:bold;">${fUmid(umidBrita0)}</td>
+                    <td style="font-size:11px; background:#e6f4ea; color:#137333; font-weight:bold;">${fUmid(umidBrita1)}</td>
                 `;
 
                 tBody.appendChild(tr);
@@ -3022,7 +3085,8 @@
 
         window.exportarCSV = function () {
             // Garantir que estamos usando a lista de materiais mais atualizada
-            const materiaisAtuais = JSON.parse(localStorage.getItem('usina_materials')) || JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            const materiaisAtuais = JSON.parse(localStorage.getItem('usina_materiais_' + u)) || JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
             let hist = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
 
             // --- FILTRO DE DATA E USINA APLICADO AO EXPORTAR ---
