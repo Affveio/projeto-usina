@@ -3322,7 +3322,8 @@ setTimeout(window.inicializarNuvem, 1000);
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
             const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
             
-            if (hist.some(nota => nota.nf === nfInput && nota.unidade === unidadeAtual)) {
+            const isAlteracao = hist.some(nota => nota.nf === nfInput && nota.unidade === unidadeAtual);
+            if (isAlteracao) {
                 let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
                 let senhaNormal = localStorage.getItem('usina_senha_acesso') || "1988";
                 let senha = await pedirSenha(`A Nota Fiscal ${nfInput} já consta no Histórico!\nDigite a senha para MODIFICAR:`);
@@ -3341,12 +3342,12 @@ setTimeout(window.inicializarNuvem, 1000);
             // Grava no histórico
             gravarNotaNoHistorico();
             
-            // Abater do Silo selecionado (Dinamico para materiais do tipo 'cement')
+            // Abater do Silo selecionado (Dinamico para materiais do tipo 'cement') - APENAS SE NÃO FOR ALTERAÇÃO
             let siloSelect = document.getElementById('inputSilo').value;
             let traco = TRACOS_DB[estado.tracoSelecionado];
             let volume = parseFloat(document.getElementById('inputVolume').value) || 0;
             
-            if (traco && window.usina_silos_db) {
+            if (!isAlteracao && traco && window.usina_silos_db) {
                 MAT_DB.forEach(mat => {
                     if(mat.type === 'cement') {
                         let consumoCimento = (traco[mat.id] || 0) * volume;
