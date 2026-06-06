@@ -1357,7 +1357,7 @@
 
         window.exportarCSV = function() {
             // Garantir que estamos usando a lista de materiais mais atualizada
-            const materiaisAtuais = JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
+            const materiaisAtuais = JSON.parse(localStorage.getItem('usina_materials')) || JSON.parse(localStorage.getItem('usina_materiais')) || MATERIAIS_DEFAULT;
             let hist = JSON.parse(localStorage.getItem('usina_historico') || '[]');
             
             // Filtro aplicado ao exportar também
@@ -1370,12 +1370,40 @@
             
             let cabecalhos = ["DATA", "HORA", "TURNO", "CAMINHAO", "PLACA", "MATRICULA", "MOTORISTA", "FRENTE", "TRACO", "VOLUME", "AGUA_ADD", "AGUA_USINA", "HR_MISTURA", "NOTA", "USINA"];
             
-            // Adicionar materiais dinâmicos aos cabeçalhos
-            materiaisAtuais.forEach(mat => {
-                cabecalhos.push(mat.label.toUpperCase() + " (" + mat.unit + ")");
+            // Ordem de agregados/materiais solicitada pelo usuário para copiar/colar facilmente para a planilha dele
+            const ordemPlanilhaUsuario = [
+                { id: "cimento", label: "CIMENTO", unit: "KG" },
+                { id: "areia", label: "AREIA NATURAL CAVA FINA", unit: "KG" },
+                { id: "gelo", label: "GELO", unit: "LTS" },
+                { id: "brita0", label: "BRITA GNAISE 0", unit: "KG" },
+                { id: "brita1", label: "BRITA 1", unit: "KG" },
+                { id: "brita2", label: "BRITA 2", unit: "KG" },
+                { id: "mira410", label: "MIRA 410", unit: "KG" },
+                { id: "recover", label: "RECOVER", unit: "KG" },
+                { id: "viscocrete", label: "VISCOCRETE 6090", unit: "KG" },
+                { id: "miraflow", label: "MIRA FLOW 937", unit: "KG" },
+                { id: "retard", label: "CENTRALMENT RETARD CONTROL 200", unit: "KG" }
+            ];
+
+            // Identificar se há outros materiais cadastrados no sistema que não estão nessa ordem exata (como Água "agua", etc.)
+            const outrosMateriais = materiaisAtuais.filter(mat => !ordemPlanilhaUsuario.some(o => o.id === mat.id));
+
+            // Lista consolidada de materiais para exportação
+            const listaMateriaisExportacao = [...ordemPlanilhaUsuario];
+            outrosMateriais.forEach(mat => {
+                listaMateriaisExportacao.push({
+                    id: mat.id,
+                    label: mat.label.toUpperCase(),
+                    unit: mat.unit
+                });
+            });
+
+            // Adicionar materiais aos cabeçalhos
+            listaMateriaisExportacao.forEach(mat => {
+                cabecalhos.push(mat.label + " (" + mat.unit + ")");
             });
             
-            cabecalhos.push("SILO", "AGUA_RETIDA");
+            cabecalhos.push("SILO", "AGUA_RETIDA", "UMID. AREIA (%)", "UMID. BRITA 0 (%)", "UMID. BRITA 1 (%)");
             
             // Inicia o CSV com o BOM para o Excel reconhecer acentuação (UTF-8)
             let csvContent = cabecalhos.join(";") + "\r\n";
@@ -1400,8 +1428,8 @@
                     n.unidade || ""
                 ];
                 
-                // Dados de materiais (Dinâmico)
-                materiaisAtuais.forEach(mat => {
+                // Dados de materiais seguindo estritamente a ordem configurada
+                listaMateriaisExportacao.forEach(mat => {
                     let val = 0;
                     if (n.materiais && n.materiais[mat.id] !== undefined) {
                         val = n.materiais[mat.id];
@@ -1411,9 +1439,17 @@
                     linha.push(val);
                 });
                 
+                // Extrair valores de umidade (%)
+                const umidAreia = n.umid_areia || (n.materiais && n.materiais.umidades ? n.materiais.umidades.areia : 0);
+                const umidBrita0 = n.umid_brita0 || (n.materiais && n.materiais.umidades ? n.materiais.umidades.brita0 : 0);
+                const umidBrita1 = n.umid_brita1 || (n.materiais && n.materiais.umidades ? n.materiais.umidades.brita1 : 0);
+
                 // Dados finais
                 linha.push(n.silo || "—");
                 linha.push(n.agua_retida || 0);
+                linha.push(umidAreia);
+                linha.push(umidBrita0);
+                linha.push(umidBrita1);
                 
                 // Formatar linha para CSV (ponto para vírgula nos números e aspas nos textos)
                 let csvRow = linha.map(campo => {
