@@ -1704,12 +1704,19 @@ setTimeout(window.inicializarNuvem, 1000);
                 rowHeader.innerHTML += `
                     <th style="min-width: 60px;">SILO</th>
                     <th style="min-width: 80px; background:#e0f2fe; color:#075985;">AGUA RETIDA</th>
+                    <th style="min-width: 80px; background:#e6f4ea; color:#137333; font-weight:bold;">UMID. AREIA (%)</th>
+                    <th style="min-width: 80px; background:#e6f4ea; color:#137333; font-weight:bold;">UMID. BRITA 0 (%)</th>
+                    <th style="min-width: 80px; background:#e6f4ea; color:#137333; font-weight:bold;">UMID. BRITA 1 (%)</th>
                 `;
             }
 
 
             hist.forEach(n => {
                 const f = (val) => Number(val || 0).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 2});
+                const fUmid = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+                const umidAreia = n.umid_areia || (n.materiais && n.materiais.umidades ? n.materiais.umidades.areia : 0);
+                const umidBrita0 = n.umid_brita0 || (n.materiais && n.materiais.umidades ? n.materiais.umidades.brita0 : 0);
+                const umidBrita1 = n.umid_brita1 || (n.materiais && n.materiais.umidades ? n.materiais.umidades.brita1 : 0);
                 let tr = document.createElement('tr');
                 
                 let htmlMats = '';
@@ -1742,6 +1749,9 @@ setTimeout(window.inicializarNuvem, 1000);
                     ${htmlMats}
                     <td style="font-size:11px;">${n.silo || '—'}</td>
                     <td style="font-size:11px; background:#e0f2fe; color:#075985; font-weight:bold;">${f(n.agua_retida)}</td>
+                    <td style="font-size:11px; background:#e6f4ea; color:#137333; font-weight:bold;">${fUmid(umidAreia)}</td>
+                    <td style="font-size:11px; background:#e6f4ea; color:#137333; font-weight:bold;">${fUmid(umidBrita0)}</td>
+                    <td style="font-size:11px; background:#e6f4ea; color:#137333; font-weight:bold;">${fUmid(umidBrita1)}</td>
                 `;
 
                 tBody.appendChild(tr);
