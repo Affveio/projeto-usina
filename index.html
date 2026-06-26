@@ -551,6 +551,10 @@
                     const finalId = (n.id && n.id.length > 30) ? n.id : gerarIDNota(n);
                     novaNota.id = finalId;
 
+                    if (!n.id) {
+                        n.id = finalId;
+                    }
+
                     mapaUnico.set(finalId, novaNota);
                 });
 
@@ -575,6 +579,10 @@
                         if (response.ok) sucessos++; else falhas++;
                     } catch (e) { falhas++; }
                 }
+
+                // Grava os IDs gerados de volta no localStorage para manter a consistência local
+                localStorage.setItem('usina_historico_' + unidadeAtual, JSON.stringify(notasRaw));
+                localStorage.setItem('usina_historico', JSON.stringify(notasRaw));
 
 
 
@@ -2909,8 +2917,17 @@
 
                 let hist = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
                 let index = hist.findIndex(x => String(x.nf) === String(nota.nf));
-                if (index !== -1) hist[index] = nota;
-                else hist.push(nota);
+                if (index !== -1) {
+                    if (hist[index].id) {
+                        nota.id = hist[index].id;
+                    }
+                    nota.materiais.editada = "SIM";
+                    hist[index] = nota;
+                } else {
+                    nota.id = gerarIDNota(nota);
+                    nota.materiais.editada = "NÃO";
+                    hist.push(nota);
+                }
 
                 localStorage.setItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369'), JSON.stringify(hist));
             } catch (e) {
@@ -2976,6 +2993,7 @@
                     <th style="min-width: 60px;">HR MIST.</th>
                     <th style="min-width: 60px; background:#fecaca; color:#7f1d1d; border-right: 2px solid white; font-weight:900;">NOTA</th>
                     <th style="min-width: 70px; background:#14b8a6; color:white;">USINA</th>
+                    <th style="min-width: 60px; background:#fef08a; color:#854d0e;">ALT.</th>
                 `;
                 MAT_DB.forEach(mat => {
                     const th = document.createElement('th');
@@ -3007,6 +3025,11 @@
                     htmlMats += `<td style="font-size:10px;">${f(val)}</td>`;
                 });
 
+                const foiAlterada = n.materiais && n.materiais.editada === "SIM" ? "SIM" : "NÃO";
+                const badgeAlt = foiAlterada === "SIM" 
+                    ? `<span style="background:#fef08a; color:#854d0e; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">✏️ SIM</span>` 
+                    : `<span style="color:#94a3b8; font-size:10px;">NÃO</span>`;
+
                 tr.innerHTML = `
                     <td style="font-size:11px;">${n.data}</td>
                     <td style="font-size:11px;">${n.hora_saida}</td>
@@ -3028,6 +3051,7 @@
                         </div>
                     </td>
                     <td style="font-size:11px; font-weight:bold; color:#14b8a6;">${n.unidade || '---'}</td>
+                    <td style="font-size:11px;">${badgeAlt}</td>
                     ${htmlMats}
                     <td style="font-size:11px;">${n.silo || '—'}</td>
                     <td style="font-size:11px; background:#e0f2fe; color:#075985; font-weight:bold;">${f(n.agua_retida)}</td>
@@ -3105,7 +3129,7 @@
 
             if (hist.length === 0) return alert("Nenhuma nota gerada ainda no histórico.");
 
-            let cabecalhos = ["DATA", "HORA", "TURNO", "CAMINHAO", "PLACA", "MATRICULA", "MOTORISTA", "FRENTE", "TRACO", "VOLUME", "AGUA_ADD", "AGUA_USINA", "HR_MISTURA", "NOTA", "USINA"];
+            let cabecalhos = ["DATA", "HORA", "TURNO", "CAMINHAO", "PLACA", "MATRICULA", "MOTORISTA", "FRENTE", "TRACO", "VOLUME", "AGUA_ADD", "AGUA_USINA", "HR_MISTURA", "NOTA", "USINA", "ALTERADA"];
 
             // Ordem de agregados/materiais solicitada pelo usuário para copiar/colar facilmente para a planilha dele
             const ordemPlanilhaUsuario = [
@@ -3146,6 +3170,7 @@
             let csvContent = cabecalhos.join(";") + "\r\n";
 
             hist.forEach(n => {
+                const foiAlterada = n.materiais && n.materiais.editada === "SIM" ? "SIM" : "NÃO";
                 // Dados básicos
                 let linha = [
                     n.data || "",
@@ -3162,7 +3187,8 @@
                     n.agua_usina || 0,
                     n.hora_mistura || "",
                     n.nf || "",
-                    n.unidade || ""
+                    n.unidade || "",
+                    foiAlterada
                 ];
 
                 // Dados de materiais seguindo estritamente a ordem configurada
@@ -5835,6 +5861,92 @@
                 }
             } catch (e) {
                 console.error("Erro ao puxar NF do histórico", e);
+            }
+
+            // Puxar dados de nota existente ao digitar NF que já está no histórico
+            window.preencherFormularioComNota = function (n) {
+                if (!n) return;
+                
+                // 1. Campos de texto simples
+                if (document.getElementById('inputDate')) document.getElementById('inputDate').value = n.data || "";
+                if (document.getElementById('inputHoraMistura')) document.getElementById('inputHoraMistura').value = n.hora_mistura || "";
+                if (document.getElementById('inputHoraSaida')) document.getElementById('inputHoraSaida').value = n.hora_saida || "";
+                if (document.getElementById('inputLocal')) document.getElementById('inputLocal').value = n.frente || "";
+                if (document.getElementById('inputVolume')) document.getElementById('inputVolume').value = n.volume || "";
+                if (document.getElementById('inputAguaObra')) document.getElementById('inputAguaObra').value = n.agua_obra !== undefined ? n.agua_obra : 0;
+                if (document.getElementById('inputAguaUsina')) document.getElementById('inputAguaUsina').value = n.agua_usina !== undefined ? n.agua_usina : 0;
+                if (document.getElementById('inputGelo')) document.getElementById('inputGelo').value = n.gelo !== undefined ? n.gelo : 0;
+                if (document.getElementById('inputSilo')) document.getElementById('inputSilo').value = n.silo || "Silo 1";
+
+                // 2. Veículo (Betoneira)
+                if (n.al) {
+                    const vec = (typeof FROTA_DB !== 'undefined' ? FROTA_DB[n.al] : null) || { placa: n.placa || "" };
+                    estado.placaSelecionadaObj = { al: n.al, placa: vec.plaka || vec.placa || "" };
+                    if (document.getElementById('inputPlacaDisplay')) document.getElementById('inputPlacaDisplay').value = n.al;
+                    if (document.getElementById('inputFrota')) document.getElementById('inputFrota').value = vec.placa || "";
+                    
+                    // Atualiza seleção na lista
+                    document.querySelectorAll('#listaPlacas li').forEach(li => {
+                        if (li.innerText.trim().toUpperCase() === n.al.trim().toUpperCase()) {
+                            li.classList.add('selected');
+                        } else {
+                            li.classList.remove('selected');
+                        }
+                    });
+                }
+
+                // 3. Motorista
+                if (n.motorista) {
+                    estado.motoristaSelecionadoObj = { matricula: n.matricula || "", nome: n.motorista };
+                    if (document.getElementById('inputMotMatriculaDisplay')) document.getElementById('inputMotMatriculaDisplay').value = n.matricula || "";
+                    if (document.getElementById('inputMotoristaDisplay')) document.getElementById('inputMotoristaDisplay').value = n.motorista;
+                    
+                    // Atualiza seleção na lista
+                    document.querySelectorAll('#listaMotoristas li').forEach(li => {
+                        if (li.innerText.trim().toUpperCase() === n.motorista.trim().toUpperCase()) {
+                            li.classList.add('selected');
+                        } else {
+                            li.classList.remove('selected');
+                        }
+                    });
+                }
+
+                // 4. Traço
+                if (n.traco && window.selecionarTracoGeral) {
+                    window.selecionarTracoGeral(n.traco);
+                }
+
+                // 5. Vias (Cópias)
+                const viasInput = document.getElementById('inputVias') || document.getElementById('inputCopias') || document.getElementById('vias');
+                if (viasInput && n.vias) {
+                    viasInput.value = n.vias;
+                }
+
+                // Dispara recalcular para atualizar a barra de materiais
+                if (typeof recalcular === 'function') recalcular();
+            };
+
+            try {
+                const inputNF = document.getElementById('inputNF');
+                if (inputNF) {
+                    inputNF.addEventListener('change', function () {
+                        const nfDigitada = this.value.trim();
+                        if (!nfDigitada) return;
+
+                        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+                        let hist = JSON.parse(localStorage.getItem('usina_historico_' + unidadeAtual) || localStorage.getItem('usina_historico') || '[]');
+                        const notaExistente = hist.find(x => String(x.nf) === String(nfDigitada) && (x.unidade === unidadeAtual || !x.unidade));
+
+                        if (notaExistente) {
+                            const desejaCarregar = confirm(`A Nota Fiscal nº ${nfDigitada} já existe no histórico da Usina ${unidadeAtual}.\n\nDeseja CARREGAR os dados dela para edição?\n(Isso preencherá automaticamente os campos com as informações salvas)`);
+                            if (desejaCarregar) {
+                                window.preencherFormularioComNota(notaExistente);
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Erro ao registrar event listener de NF existente:", err);
             }
         });
     </script>
