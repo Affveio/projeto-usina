@@ -40,7 +40,9 @@
             const data = (n.data || '0').toString().replace(/\D/g, '');
             const unidade = (n.unidade || localStorage.getItem('usina_unidade') || 'A369').toString().trim().toUpperCase();
             
-            const chave = `${unidade}_${nf}_${data}`;
+            // Se a nota foi editada, incluímos o timestamp no hash para gerar um ID diferente e único
+            const sufixoEditada = (n.materiais && n.materiais.editada === "SIM") ? `_${n.timestamp || Date.now()}` : "";
+            const chave = `${unidade}_${nf}_${data}${sufixoEditada}`;
             const hash = cyrb128(chave);
             const hex = hash.map(x => x.toString(16).padStart(8, '0')).join('');
             
@@ -89,16 +91,13 @@
                         historicoProcessado = notasNuvem.filter(n => !n.unidade || n.unidade === unidadeAtual);
                     }
 
-                    // 2. Mesclar com Local usando chave de negócio (unidade + nf + data) para evitar duplicidade
+                    // 2. Mesclar com Local usando ID para permitir coexistência de originais e alteradas
                     const mapaFinal = {};
                     
-                    // Inicializa com todas as notas locais indexadas pela chave de negócio
+                    // Inicializa com todas as notas locais indexadas pelo ID
                     todasNotasLocais.forEach(n => {
                         if (n) {
-                            const nf = n.nf || n.numero || '0';
-                            const unidade = n.unidade || unidadeAtual;
-                            const data = n.data;
-                            const key = `${unidade}_${nf}_${data}`.toLowerCase();
+                            const key = n.id || gerarIDNota(n);
                             mapaFinal[key] = n;
                         }
                     });
@@ -107,21 +106,15 @@
                     historicoProcessado.forEach(n => {
                         if (!n.unidade && unidadeAtual !== 'GERAL') n.unidade = unidadeAtual;
                         
-                        const nf = n.nf || n.numero || '0';
-                        const unidade = n.unidade || unidadeAtual;
-                        const data = n.data;
-                        const key = `${unidade}_${nf}_${data}`.toLowerCase();
-                        
-                        const local = mapaFinal[key];
-                        
                         // Garante que a nota da nuvem tenha o ID gerado pelo novo padrão seguro
                         n.id = gerarIDNota(n);
+                        const key = n.id;
+                        
+                        const local = mapaFinal[key];
 
                         // ✅ CORREÇÃO ANTI-REVERSÃO: Se a nota local tem timestamp maior, não sobrescreve
                         if (local && (local.timestamp || 0) > (n.timestamp || 0)) {
                             console.log(`⚠️ Nota NF=${n.nf} local mais recente preservada.`);
-                            // Garante que a nota local também tenha o ID atualizado para o novo formato
-                            local.id = gerarIDNota(local);
                         } else {
                             mapaFinal[key] = n;
                         }
@@ -3031,12 +3024,10 @@
                 let hist = JSON.parse(localStorage.getItem('usina_historico_' + unidadeAtual) || localStorage.getItem('usina_historico') || '[]');
                 let index = hist.findIndex(x => String(x.nf) === String(nota.nf) && x.unidade === unidadeAtual);
                 if (index !== -1) {
-                    if (hist[index].id) {
-                        nota.id = hist[index].id;
-                    }
                     nota.materiais.editada = "SIM";
                     nota.timestamp = Date.now();
-                    hist[index] = nota;
+                    nota.id = gerarIDNota(nota);
+                    hist.push(nota);
                 } else {
                     nota.id = gerarIDNota(nota);
                     nota.materiais.editada = "NÃO";
@@ -3171,7 +3162,7 @@
                     <td style="background:#fee2e2; color:#991b1b; font-weight:900;">
                         <div style="display:flex; justify-content:space-between; align-items:center; padding: 0 4px;">
                             <span>${n.nf}</span>
-                            <span style="cursor:pointer; font-size:12px; margin-left: 5px;" onclick="excluirNotaHistorico('${n.nf}')" title="Excluir Nota">🗑️</span>
+                            <span style="cursor:pointer; font-size:12px; margin-left: 5px;" onclick="excluirNotaHistorico('${n.id}', '${n.nf}')" title="Excluir Nota">🗑️</span>
                         </div>
                     </td>
                     <td style="font-size:11px; font-weight:bold; color:#14b8a6;">${n.unidade || '---'}</td>
@@ -3188,7 +3179,7 @@
             });
         };
 
-        window.excluirNotaHistorico = async function (nf) {
+        window.excluirNotaHistorico = async function (id, nf) {
             const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
             let msg = "Atenção! Você está prestes a excluir a Nota " + nf + " (Usina " + unidadeAtual + ") do banco de dados.\n\nDigite a Senha para prosseguir:";
 
@@ -3202,8 +3193,8 @@
             }
 
             let hist = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
-            // FILTRO CRÍTICO: Buscar a nota que combina NF E UNIDADE
-            const notaParaExcluir = hist.find(x => String(x.nf) === String(nf) && (x.unidade === unidadeAtual || !x.unidade));
+            // Buscar a nota que combina o ID específico
+            const notaParaExcluir = hist.find(x => x.id === id);
 
             if (notaParaExcluir && window.dbExcluirNota) {
                 const resCloud = await window.dbExcluirNota(notaParaExcluir.id, notaParaExcluir);
@@ -3212,8 +3203,8 @@
                 }
             }
 
-            // Remove localmente apenas a nota da unidade correta
-            hist = hist.filter(x => !(String(x.nf) === String(nf) && (x.unidade === unidadeAtual || !x.unidade)));
+            // Remove localmente apenas a nota com o ID correto
+            hist = hist.filter(x => x.id !== id);
             localStorage.setItem('usina_historico_' + unidadeAtual, JSON.stringify(hist));
             localStorage.setItem('usina_historico', JSON.stringify(hist));
             carregarHistorico();
