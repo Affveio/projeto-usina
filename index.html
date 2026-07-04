@@ -52,15 +52,31 @@
             if (window.isSyncing) return { success: false };
             try {
                 const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
-                // Baixamos todo o histórico necessário (10000) para garantir que pegamos tudo
-                let url = `${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=10000`;
+                
+                let notasNuvem = [];
+                let offset = 0;
+                const limit = 1000;
+                let temMais = true;
+                
+                while (temMais) {
+                    let url = `${SUPABASE_URL}/rest/v1/notas?select=*&order=timestamp.desc&limit=${limit}&offset=${offset}`;
+                    const resNotas = await fetch(url, {
+                        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                    });
+                    if (!resNotas.ok) {
+                        console.error("Falha ao buscar lote do histórico:", resNotas.statusText);
+                        break;
+                    }
+                    const lote = await resNotas.json();
+                    notasNuvem = notasNuvem.concat(lote);
+                    if (lote.length < limit) {
+                        temMais = false;
+                    } else {
+                        offset += limit;
+                    }
+                }
 
-                const resNotas = await fetch(url, {
-                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                });
-
-                if (resNotas.ok) {
-                    const notasNuvem = await resNotas.json();
+                if (notasNuvem.length > 0) {
                     let todasNotasLocais = JSON.parse(localStorage.getItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369')) || localStorage.getItem('usina_historico') || '[]');
 
                     // 1. Filtragem Local Inteligente
