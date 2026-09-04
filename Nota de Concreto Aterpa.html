@@ -272,29 +272,23 @@
             return null;
         };
 
+        window.isSyncing = false;
+
         // =====================================================================
         // GERENCIAMENTO DE TRAÇOS - IGUAL AO HISTÓRICO DE NOTAS
-        // Cada traço é uma linha no Supabase com campo 'unidade'
         // =====================================================================
-
         window.dbSalvarTracoNuvem = async (nome, dadosTraco, unidade) => {
             const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
             const id = (u + '_' + nome).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
             try {
                 await fetch(`${SUPABASE_URL}/rest/v1/tracos`, {
                     method: 'POST',
-                    headers: {
-                        'apikey': SUPABASE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_KEY}`,
-                        'Content-Type': 'application/json',
-                        'Prefer': 'resolution=merge-duplicates'
-                    },
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
                     body: JSON.stringify({ id, unidade: u, nome, dados: dadosTraco, ativo: dadosTraco.ativo !== false, atualizado_em: new Date().toISOString() })
                 });
                 return { success: true };
-            } catch (e) { console.error('Erro ao salvar traço na nuvem:', e); return { success: false }; }
+            } catch (e) { return { success: false }; }
         };
-
         window.dbBaixarTracosDaNuvem = async () => {
             const unidade = localStorage.getItem('usina_unidade') || 'A369';
             try {
@@ -340,11 +334,11 @@
             if (local) {
                 try { tracos = { ...tracos, ...JSON.parse(local) }; } catch (e) { }
             }
+
             window.TRACOS_DB = tracos;
             if (window.popularTracos) window.popularTracos();
             return tracos;
         };
-
         window.dbExcluirTracoNuvem = async (nome, unidade) => {
             const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
             const id = (u + '_' + nome).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
@@ -354,221 +348,8 @@
                     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
                 });
                 return { success: true };
-            } catch (e) { console.error('Erro ao excluir traço da nuvem:', e); return { success: false }; }
+            } catch (e) { return { success: false }; }
         };
-
-        // =====================================================================
-        // GERENCIAMENTO DE FROTA - IGUAL AOS TRAÇOS
-        // =====================================================================
-        window.dbSalvarFrotaNuvem = async (al, dadosVeiculo, unidade) => {
-            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
-            const id = (u + '_' + al).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/frota`, {
-                    method: 'POST',
-                    headers: {
-                        'apikey': SUPABASE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_KEY}`,
-                        'Content-Type': 'application/json',
-                        'Prefer': 'resolution=merge-duplicates'
-                    },
-                    body: JSON.stringify({ id, unidade: u, al, dados: dadosVeiculo, ativo: dadosVeiculo.ativo !== false, atualizado_em: new Date().toISOString() })
-                });
-                return { success: true };
-            } catch (e) { console.error('Erro ao salvar frota na nuvem:', e); return { success: false }; }
-        };
-
-        window.dbBaixarFrotaDaNuvem = async () => {
-            const unidade = localStorage.getItem('usina_unidade') || 'A369';
-            try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/frota?unidade=eq.${unidade}&select=*&order=al.asc`, {
-                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                });
-                if (response.ok) {
-                    const rows = await response.json();
-                    if (rows && rows.length > 0) {
-                        const frota = {};
-                        rows.forEach(row => { frota[row.al] = { ...row.dados, ativo: row.ativo }; });
-                        localStorage.setItem('usina_frota_' + unidade, JSON.stringify(frota));
-                        window.FROTA_DB = frota;
-                        if (window.popularFrota) window.popularFrota();
-                        return frota;
-                    }
-                }
-            } catch (e) { console.error('Erro ao baixar frota da nuvem:', e); }
-            const local = localStorage.getItem('usina_frota_' + unidade) || localStorage.getItem('usina_frota');
-            if (local) {
-                const parsed = JSON.parse(local);
-                if (Object.keys(parsed).length > 0) {
-                    window.FROTA_DB = parsed;
-                    if (window.popularFrota) window.popularFrota();
-                    return parsed;
-                }
-            }
-            return null;
-        };
-
-        window.dbExcluirFrotaNuvem = async (al, unidade) => {
-            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
-            const id = (u + '_' + al).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/frota?id=eq.${id}`, {
-                    method: 'DELETE',
-                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                });
-                return { success: true };
-            } catch (e) { console.error('Erro ao excluir frota da nuvem:', e); return { success: false }; }
-        };
-
-        // =====================================================================
-        // GERENCIAMENTO DE RECEBIMENTOS DE CIMENTO - IGUAL AOS TRAÇOS
-        // =====================================================================
-        window.dbSalvarRecebimentoCimentoNuvem = async (rec, unidade) => {
-            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
-            const id = (u + '_' + (rec.timestamp || Date.now()) + '_' + (rec.nf || '0')).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
-
-            // 1. Tenta salvar na tabela 'recebimentos_cimento' (se ela existir)
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/recebimentos_cimento`, {
-                    method: 'POST',
-                    headers: {
-                        'apikey': SUPABASE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_KEY}`,
-                        'Content-Type': 'application/json',
-                        'Prefer': 'resolution=merge-duplicates'
-                    },
-                    body: JSON.stringify({ id, unidade: u, timestamp: rec.timestamp, dados: rec, atualizado_em: new Date().toISOString() })
-                });
-            } catch (e) { console.error('Erro ao salvar na tabela recebimentos_cimento:', e); }
-
-            // 2. SEMPRE salva o array completo na tabela 'configuracoes'
-            try {
-                const local = localStorage.getItem('usina_recebimentos_cimento_' + u);
-                if (local) {
-                    const arrayCompleto = JSON.parse(local);
-
-                    // 2.1 Deleta primeiro para evitar qualquer conflito de chave
-                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.recebimentos_cimento_${u}`, {
-                        method: 'DELETE',
-                        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                    });
-
-                    // 2.2 Insere o array completo atualizado
-                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
-                        method: 'POST',
-                        headers: {
-                            'apikey': SUPABASE_KEY,
-                            'Authorization': `Bearer ${SUPABASE_KEY}`,
-                            'Content-Type': 'application/json',
-                            'Prefer': 'resolution=merge-duplicates'
-                        },
-                        body: JSON.stringify({ id: `recebimentos_cimento_${u}`, dados: arrayCompleto, updated_at: new Date().toISOString() })
-                    });
-                }
-            } catch (e) { console.error('Erro ao salvar no configuracoes:', e); }
-
-            return { success: true };
-        };
-
-        window.dbBaixarRecebimentosCimentoDaNuvem = async () => {
-            const unidade = localStorage.getItem('usina_unidade') || 'A369';
-            let historico = [];
-
-            // 1. Tenta baixar da tabela 'recebimentos_cimento'
-            try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/recebimentos_cimento?unidade=eq.${unidade}&select=*&order=timestamp.desc`, {
-                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                });
-                if (response.ok) {
-                    const rows = await response.json();
-                    if (rows && rows.length > 0) {
-                        historico = rows.map(row => ({ ...row.dados }));
-                    }
-                }
-            } catch (e) { console.error('Erro ao baixar da tabela recebimentos_cimento:', e); }
-
-            // 2. Tenta baixar da tabela 'configuracoes' para garantir retrocompatibilidade completa
-            try {
-                const responseConfigs = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.recebimentos_cimento_${unidade}&select=*`, {
-                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                });
-                if (responseConfigs.ok) {
-                    const configs = await responseConfigs.json();
-                    if (configs && configs.length > 0 && configs[0].dados) {
-                        const confHist = Array.isArray(configs[0].dados) ? configs[0].dados : [];
-                        confHist.forEach(item => {
-                            const exists = historico.find(h => h.timestamp === item.timestamp || (h.data === item.data && h.nf === item.nf));
-                            if (!exists) historico.push(item);
-                        });
-                    }
-                }
-            } catch (e) { console.error('Erro ao baixar de configuracoes:', e); }
-
-            // 3. Lê o localStorage local para não perder os dados locais antes de atualizar
-            const local = localStorage.getItem('usina_recebimentos_cimento_' + unidade);
-            if (local) {
-                try {
-                    const localHist = JSON.parse(local);
-                    if (Array.isArray(localHist)) {
-                        localHist.forEach(item => {
-                            const exists = historico.find(h => h.timestamp === item.timestamp || (h.data === item.data && h.nf === item.nf));
-                            if (!exists) historico.push(item);
-                        });
-                    }
-                } catch (e) { }
-            }
-
-            // Ordena por timestamp ou data
-            historico.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-            if (historico.length > 0) {
-                localStorage.setItem('usina_recebimentos_cimento_' + unidade, JSON.stringify(historico));
-            }
-
-            if (window.renderizarHistoricoCimento) window.renderizarHistoricoCimento();
-            return historico;
-        };
-
-        window.dbExcluirRecebimentoCimentoNuvem = async (timestamp, unidade) => {
-            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
-            // 1. Tenta deletar da tabela 'recebimentos_cimento'
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/recebimentos_cimento?unidade=eq.${u}&timestamp=eq.${timestamp}`, {
-                    method: 'DELETE',
-                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                });
-            } catch (e) { console.error('Erro ao excluir recebimento da nuvem:', e); }
-
-            // 2. Atualiza no 'configuracoes'
-            try {
-                const local = localStorage.getItem('usina_recebimentos_cimento_' + u);
-                if (local) {
-                    const arrayCompleto = JSON.parse(local);
-
-                    // 2.1 Deleta primeiro para evitar qualquer conflito
-                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.recebimentos_cimento_${u}`, {
-                        method: 'DELETE',
-                        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-                    });
-
-                    // 2.2 Insere o array completo atualizado
-                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
-                        method: 'POST',
-                        headers: {
-                            'apikey': SUPABASE_KEY,
-                            'Authorization': `Bearer ${SUPABASE_KEY}`,
-                            'Content-Type': 'application/json',
-                            'Prefer': 'resolution=merge-duplicates'
-                        },
-                        body: JSON.stringify({ id: `recebimentos_cimento_${u}`, dados: arrayCompleto, updated_at: new Date().toISOString() })
-                    });
-                }
-            } catch (e) { console.error('Erro ao atualizar no configuracoes:', e); }
-
-            return { success: true };
-        };
-
-        window.isSyncing = false;
 
         window.dbExcluirNota = async (id, notaOpcional = null) => {
             if (!id && !notaOpcional) return { success: false, error: "Dados insuficientes" };
@@ -722,6 +503,7 @@
                 });
 
                 const notasPadronizadas = Array.from(mapaUnico.values());
+                const idsLocais = new Set(notasPadronizadas.map(n => n.id));
                 let sucessos = 0;
                 let falhas = 0;
 
@@ -976,8 +758,8 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Aterpa - Sistema de Usina</title>
-    <link rel="icon" type="image/png" href="Logo moderno com símbolo vermelho.png">
-    <link rel="apple-touch-icon" href="Logo moderno com símbolo vermelho.png">
+    <link rel="icon" type="image/png" href="icone2.png">
+    <link rel="apple-touch-icon" href="icone2.png">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#1e293b">
@@ -1749,6 +1531,43 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #94a3b8;
         }
+
+        /* Estilos da Tabela da Lista de Espera */
+        .tabela-fila th {
+            font-weight: 800;
+            color: #475569;
+            text-transform: uppercase;
+            font-size: 9px;
+            background: #f8fafc;
+            border-bottom: 2px solid #cbd5e1;
+            padding: 4px;
+        }
+
+        .tabela-fila td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 4px;
+            vertical-align: middle;
+            color: #1e293b;
+        }
+
+        .tabela-fila tr:hover {
+            background-color: #f1f5f9;
+        }
+
+        .tabela-fila input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            font-size: 10px;
+            padding: 2px;
+            font-weight: 500;
+        }
+
+        .tabela-fila input:focus {
+            background: white;
+            box-shadow: 0 0 0 1px #3b82f6;
+            border-radius: 2px;
+        }
     </style>
 </head>
 
@@ -1759,7 +1578,7 @@
         <div class="logo-area" style="flex-direction: column; align-items: flex-start; gap: 4px; padding: 25px 20px;">
             <div style="font-size: 26px; font-weight: 900; letter-spacing: 3px; color: #fff;">ATERPA</div>
             <!-- Seletor (Apenas Vercel) -->
-            <select id="select-unidade-rapido" onchange="window.trocarUnidadeRapido(this.value)"
+            <select id="select-unidade-rapido" style="display: none;" onchange="window.trocarUnidadeRapido(this.value)"
                 style="width: 100%; padding: 8px; border-radius: 8px; border: none; background: #334155; color: #fff; font-weight: bold; font-size: 14px; cursor: pointer; outline: none; margin-top: 5px; border-left: 4px solid #60a5fa;">
                 <option value="A369">USINA A369</option>
                 <option value="A375">USINA A375</option>
@@ -1767,20 +1586,20 @@
             </select>
             <!-- Display Fixo (Apenas Usina Local) -->
             <div id="display-unidade-fixa"
-                style="display: none; width: 100%; padding: 8px; border-radius: 8px; background: #1e293b; color: #60a5fa; font-weight: 800; font-size: 14px; margin-top: 5px; border-left: 4px solid #60a5fa; text-align: center; letter-spacing: 1px;">
+                style="display: block; width: 100%; padding: 8px; border-radius: 8px; background: #1e293b; color: #60a5fa; font-weight: 800; font-size: 14px; margin-top: 5px; border-left: 4px solid #60a5fa; text-align: center; letter-spacing: 1px;">
                 USINA A369
             </div>
         </div>
         <ul class="menu" id="menuLateral">
-            <li><a href="javascript:void(0)" onclick="mudarAba('emissao', this)" class="active"><span>📝</span> Nova Nota</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('historico', this)"><span>📅</span> Histórico</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('tracos', this)"><span>🧪</span> Traços</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('frota', this)"><span>🚚</span> Frota</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('umidade', this)"><span>💧</span> Umidade</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('recebimento-cimento', this)"><span>🏗️</span> Recebimento</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('relatorios', this)"><span>📊</span> Relatórios</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('resumo', this)"><span>📋</span> Resumo Diário</a></li>
-            <li><a href="javascript:void(0)" onclick="mudarAba('segunda-via', this)"><span>🖨️</span> Segunda Via</a></li>
+            <li><a href="#" onclick="mudarAba('emissao', this)" class="active"><span>📝</span> Nova Nota</a></li>
+            <li><a href="#" onclick="mudarAba('historico', this)"><span>📅</span> Histórico</a></li>
+            <li><a href="#" onclick="mudarAba('tracos', this)"><span>🧪</span> Traços</a></li>
+            <li><a href="#" onclick="mudarAba('frota', this)"><span>🚚</span> Frota</a></li>
+            <li><a href="#" onclick="mudarAba('umidade', this)"><span>💧</span> Umidade</a></li>
+            <li><a href="#" onclick="mudarAba('recebimento-cimento', this)"><span>🏗️</span> Recebimento</a></li>
+            <li><a href="#" onclick="mudarAba('relatorios', this)"><span>📊</span> Relatórios</a></li>
+            <li><a href="#" onclick="mudarAba('resumo', this)"><span>📋</span> Resumo Diário</a></li>
+            <li><a href="#" onclick="mudarAba('segunda-via', this)"><span>🖨️</span> Segunda Via</a></li>
             <li style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
                 <a href="javascript:void(0)" onclick="window.abrirConfigCloud()"
                     style="color: #14b8a6; text-decoration: none; font-size: 13px;">☁️ Painel Multi-Usina</a>
@@ -1937,9 +1756,10 @@
                         style="font-size: 12px; background: transparent;">
                 </div>
 
-                <div class="form-row">
-                    <div class="form-label">LOCAL</div><input type="text" class="form-input" id="inputLocal"
-                        value="HELIPONTO">
+                <div class="form-row" style="position: relative; overflow: visible;">
+                    <div class="form-label">LOCAL</div>
+                    <input type="text" class="form-input" id="inputLocal" value="HELIPONTO" autocomplete="new-password">
+                    <div id="dropdownLocais" style="display: none; position: absolute; top: 100%; left: 0; z-index: 100000; width: 520px; max-height: 280px; overflow-y: auto; background: #202124; border: 1px solid #3c4043; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); padding: 5px; margin-top: 4px;"></div>
                 </div>
 
                 <div class="form-row">
@@ -2029,6 +1849,36 @@
                         <li>MANOEL ALVES DE LIMA</li>
                         <li>VALDEITON CARVALHO</li>
                     </ul>
+                </div>
+
+                <div class="list-container" style="flex: 2.2; min-width: 320px;">
+                    <div
+                        style="background: #f1f5f9; padding: 8px 12px; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>⏳ LISTA DE ESPERA</span>
+                        <div style="display: flex; gap: 5px;">
+                            <button onclick="adicionarFilaEspera()" style="background: #3b82f6; color: white; border: none; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer;" title="Adicionar motorista selecionado para a lista de espera">+ Add</button>
+                            <button onclick="limparFilaEspera()" style="background: #ef4444; color: white; border: none; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; cursor: pointer;" title="Limpar toda a lista">Limpar</button>
+                        </div>
+                    </div>
+                    <div style="flex-grow: 1; overflow: auto; padding: 4px;">
+                        <table class="tabela-fila" style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: Arial, sans-serif;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 1px solid #cbd5e1; text-align: left;">
+                                    <th style="padding: 4px; width: 20px;">nt</th>
+                                    <th style="padding: 4px; width: 40px;">Hora</th>
+                                    <th style="padding: 4px;">Motorista</th>
+                                    <th style="padding: 4px;">Local</th>
+                                    <th style="padding: 4px; width: 30px;">Vol</th>
+                                    <th style="padding: 4px; width: 45px;">Nº nota</th>
+                                    <th style="padding: 4px;">Obs</th>
+                                    <th style="padding: 4px; width: 45px; text-align: center;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyFilaEspera">
+                                <!-- Linhas dinâmicas -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2340,30 +2190,16 @@
 
     <main id="aba-historico" class="main-content"
         style="display: none; padding: 20px 30px; background: #f4f7fb; overflow-y: auto; overflow-x: hidden; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 100%;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
             <h2 style="color: #1e293b; font-size: 20px; font-weight: 700;">Histórico Geral de Produção</h2>
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 5px;">
-                    <label style="font-size: 12px; font-weight: bold; color: #64748b;">De:</label>
-                    <input type="date" id="histDataIni" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit;">
-                </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
-                    <label style="font-size: 12px; font-weight: bold; color: #64748b;">Até:</label>
-                    <input type="date" id="histDataFim" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-family: inherit;">
-                </div>
-                <button onclick="window.carregarHistorico()" 
-                    style="background: #3b82f6; color: white; border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);">
-                    Filtrar
-                </button>
-                <button onclick="exportarCSV()"
-                    style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" viewBox="0 0 24 24">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                    </svg>
-                    Baixar Excel (CSV)
-                </button>
-            </div>
+            <button onclick="exportarCSV()"
+                style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+                Baixar Excel (CSV)
+            </button>
         </div>
 
         <div style="background: white; border-radius: 12px; padding: 0; border: 1px solid #e2e8f0; display: flex; flex-direction: column; box-shadow: 0 4px 15px rgba(0,0,0,0.02); overflow-x: auto; max-width: 100%; white-space: nowrap; height: calc(100vh - 180px); min-height: 400px; cursor: grab;"
@@ -2638,8 +2474,6 @@
         }
         const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
         window.estaEditandoTraco = null;
-
-        // Carrega traços do cache local (será atualizado da nuvem no DOMContentLoaded)
         let rawTracos = localStorage.getItem('usina_tracos_' + unidadeAtual) || localStorage.getItem('usina_tracos');
         let tracosSalvos = rawTracos ? JSON.parse(rawTracos) : null;
 
@@ -2760,7 +2594,9 @@
             popularCamposPesagem();
             popularFrota();
             recalcular();
+            if (window.carregarFilaEspera) window.carregarFilaEspera();
 
+            // Sincronização entre abas em tempo real
             window.addEventListener('storage', (e) => {
                 if (e.key && e.key.startsWith('usina_')) {
                     const u = localStorage.getItem('usina_unidade') || 'A369';
@@ -2774,11 +2610,197 @@
                     let rM = localStorage.getItem('usina_motoristas_' + u);
                     if (rM) window.MOTORISTAS_DB = JSON.parse(rM);
 
+                    if (e.key === 'usina_lista_espera_' + u) {
+                        if (window.carregarFilaEspera) window.carregarFilaEspera();
+                    }
+
                     if (window.popularTracos) window.popularTracos();
                     if (window.popularFrota) window.popularFrota();
                     if (window.renderizarHistoricoCimento) window.renderizarHistoricoCimento();
+                    if (window.recalcular) window.recalcular();
                 }
             });
+        };
+
+
+        // --- FUNÇÕES DA FILA DE ESPERA (PROGRAMAÇÃO DIÁRIA) ---
+        window.carregarFilaEspera = function () {
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            let fila = JSON.parse(localStorage.getItem('usina_lista_espera_' + u) || '[]');
+            const tbody = document.getElementById('tbodyFilaEspera');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (fila.length === 0) {
+                // Se a fila estiver vazia, cria 3 linhas vazias para ficar bonito como uma planilha
+                for (let i = 1; i <= 3; i++) {
+                    tbody.innerHTML += `
+                        <tr style="height: 28px;">
+                            <td style="color: #94a3b8; text-align: center; font-weight: bold; background: #f8fafc;">${i}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    `;
+                }
+                return;
+            }
+
+            fila.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.style.height = '28px';
+                tr.innerHTML = `
+                    <td style="color: #475569; text-align: center; font-weight: bold; background: #f8fafc; font-size: 10px;">${index + 1}</td>
+                    <td style="padding: 2px;"><input type="text" value="${item.hora || ''}" onchange="atualizarItemFila(${index}, 'hora', this.value)" style="text-align: center;"></td>
+                    <td style="padding: 2px; font-weight: bold;"><input type="text" value="${item.motorista || ''}" onchange="atualizarItemFila(${index}, 'motorista', this.value)"></td>
+                    <td style="padding: 2px;"><input type="text" value="${item.local || ''}" onchange="atualizarItemFila(${index}, 'local', this.value)"></td>
+                    <td style="padding: 2px;"><input type="text" value="${item.volume || ''}" onchange="atualizarItemFila(${index}, 'volume', this.value)" style="text-align: center;"></td>
+                    <td style="padding: 2px; font-weight: bold; color: #b91c1c;"><input type="text" value="${item.nota || ''}" onchange="atualizarItemFila(${index}, 'nota', this.value)" style="text-align: center;"></td>
+                    <td style="padding: 2px;"><input type="text" value="${item.obs || ''}" onchange="atualizarItemFila(${index}, 'obs', this.value)"></td>
+                    <td style="text-align: center; white-space: nowrap; padding: 2px;">
+                        <button onclick="carregarItemFilaParaFormulario(${index})" style="background: #10b981; color: white; border: none; padding: 2px 4px; border-radius: 3px; font-size: 9px; cursor: pointer; font-weight: bold;" title="Chamar motorista para o Formulário de Emissão">📯 Chamar</button>
+                        <button onclick="moverItemFila(${index}, -1)" style="background: #64748b; color: white; border: none; padding: 2px 3px; border-radius: 3px; font-size: 9px; cursor: pointer;" title="Subir na fila">▲</button>
+                        <button onclick="moverItemFila(${index}, 1)" style="background: #64748b; color: white; border: none; padding: 2px 3px; border-radius: 3px; font-size: 9px; cursor: pointer;" title="Descer na fila">▼</button>
+                        <button onclick="removerItemFila(${index})" style="background: #ef4444; color: white; border: none; padding: 2px 4px; border-radius: 3px; font-size: 9px; cursor: pointer; font-weight: bold;" title="Remover da lista">✕</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        };
+
+        window.adicionarFilaEspera = function () {
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            let fila = JSON.parse(localStorage.getItem('usina_lista_espera_' + u) || '[]');
+
+            // Captura os dados atuais do formulário
+            const motoristaDisplay = document.getElementById('inputMotoristaDisplay') ? document.getElementById('inputMotoristaDisplay').value : '';
+            const local = document.getElementById('inputLocal') ? document.getElementById('inputLocal').value : '';
+            const volume = document.getElementById('inputVolume') ? document.getElementById('inputVolume').value : '';
+            const nota = document.getElementById('inputNF') ? document.getElementById('inputNF').value : '';
+            
+            // Hora atual
+            const agora = new Date();
+            const horaAtual = agora.toTimeString().substring(0, 5);
+
+            let motFinal = motoristaDisplay;
+            if (!motFinal) {
+                motFinal = prompt("Digite o nome do Motorista para a fila de espera:");
+                if (motFinal === null) return; // cancelado
+            }
+
+            const novoItem = {
+                hora: horaAtual,
+                motorista: motFinal.toUpperCase(),
+                local: local.toUpperCase(),
+                volume: volume,
+                nota: nota,
+                obs: ''
+            };
+
+            fila.push(novoItem);
+            localStorage.setItem('usina_lista_espera_' + u, JSON.stringify(fila));
+            carregarFilaEspera();
+        };
+
+        window.atualizarItemFila = function (index, campo, valor) {
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            let fila = JSON.parse(localStorage.getItem('usina_lista_espera_' + u) || '[]');
+            if (fila[index]) {
+                fila[index][campo] = valor.toUpperCase();
+                localStorage.setItem('usina_lista_espera_' + u, JSON.stringify(fila));
+            }
+        };
+
+        window.removerItemFila = function (index) {
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            let fila = JSON.parse(localStorage.getItem('usina_lista_espera_' + u) || '[]');
+            fila.splice(index, 1);
+            localStorage.setItem('usina_lista_espera_' + u, JSON.stringify(fila));
+            carregarFilaEspera();
+        };
+
+        window.moverItemFila = function (index, direcao) {
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            let fila = JSON.parse(localStorage.getItem('usina_lista_espera_' + u) || '[]');
+            const novoIndex = index + direcao;
+            if (novoIndex >= 0 && novoIndex < fila.length) {
+                const temp = fila[index];
+                fila[index] = fila[novoIndex];
+                fila[novoIndex] = temp;
+                localStorage.setItem('usina_lista_espera_' + u, JSON.stringify(fila));
+                carregarFilaEspera();
+            }
+        };
+
+        window.limparFilaEspera = function () {
+            if (confirm("Deseja realmente limpar toda a lista de espera?")) {
+                const u = localStorage.getItem('usina_unidade') || 'A369';
+                localStorage.removeItem('usina_lista_espera_' + u);
+                carregarFilaEspera();
+            }
+        };
+
+        window.carregarItemFilaParaFormulario = function (index) {
+            const u = localStorage.getItem('usina_unidade') || 'A369';
+            let fila = JSON.parse(localStorage.getItem('usina_lista_espera_' + u) || '[]');
+            const item = fila[index];
+            if (!item) return;
+
+            if (item.motorista) {
+                let matriculaEncontrada = "";
+                Object.keys(MOTORISTAS_DB).forEach(mat => {
+                    if (MOTORISTAS_DB[mat].nome.toUpperCase() === item.motorista.toUpperCase()) {
+                        matriculaEncontrada = mat;
+                    }
+                });
+
+                if (matriculaEncontrada) {
+                    estado.motoristaSelecionadoObj = { matricula: matriculaEncontrada, nome: item.motorista };
+                    if (document.getElementById('inputMotMatriculaDisplay')) document.getElementById('inputMotMatriculaDisplay').value = matriculaEncontrada;
+                } else {
+                    estado.motoristaSelecionadoObj = { matricula: "", nome: item.motorista };
+                    if (document.getElementById('inputMotMatriculaDisplay')) document.getElementById('inputMotMatriculaDisplay').value = "";
+                }
+
+                if (document.getElementById('inputMotoristaDisplay')) {
+                    document.getElementById('inputMotoristaDisplay').value = item.motorista;
+                }
+
+                document.querySelectorAll('#listaMotoristas li').forEach(li => {
+                    if (li.innerText.toUpperCase() === item.motorista.toUpperCase()) {
+                        li.classList.add('selected');
+                    } else {
+                        li.classList.remove('selected');
+                    }
+                });
+            }
+
+            if (item.local && document.getElementById('inputLocal')) {
+                document.getElementById('inputLocal').value = item.local;
+            }
+
+            if (item.volume && document.getElementById('inputVolume')) {
+                document.getElementById('inputVolume').value = item.volume;
+            }
+
+            if (item.nota && document.getElementById('inputNF')) {
+                document.getElementById('inputNF').value = item.nota;
+            }
+
+            const notificacao = document.createElement('div');
+            notificacao.style = "position: fixed; bottom: 20px; right: 20px; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); z-index: 10000; transition: 0.3s;";
+            notificacao.innerText = `📯 Motorista ${item.motorista} chamado para emissão!`;
+            document.body.appendChild(notificacao);
+            setTimeout(() => {
+                notificacao.style.opacity = '0';
+                setTimeout(() => document.body.removeChild(notificacao), 300);
+            }, 2500);
+
+            recalcular();
         };
 
 
@@ -2977,6 +2999,7 @@
         };
 
         window.mudarAba = async function (abaId, el) {
+            // Acesso livre solicitado pelo usuário
 
             let alvo = document.getElementById('aba-' + abaId);
             if (!alvo) {
@@ -3107,6 +3130,7 @@
                 }
 
                 localStorage.setItem('usina_historico_' + unidadeAtual, JSON.stringify(hist));
+                localStorage.setItem('usina_historico', JSON.stringify(hist));
                 
                 // DISPARO DE SINCRONIZAÇÃO INDIVIDUAL DIRETO
                 if (window.dbAtualizarNotaIndividual) {
@@ -3155,7 +3179,7 @@
                         if (dtIni && dataNota < dtIni) return false;
                         if (dtFim && dataNota > dtFim) return false;
                     } else {
-                        return false; // Se não tem data válida e filtramos, exclui
+                        return false;
                     }
                 }
                 return true;
@@ -3284,9 +3308,214 @@
 
             // Remove localmente apenas a nota com o ID correto
             hist = hist.filter(x => x.id !== id);
-            localStorage.setItem('usina_historico_' + unidadeAtual, JSON.stringify(hist));
+            localStorage.setItem('usina_historico_' + (localStorage.getItem('usina_unidade') || 'A369'), JSON.stringify(hist));
             carregarHistorico();
             alert("Nota " + nf + " removida com sucesso da " + unidadeAtual + ".");
+        };
+
+        window.dbSalvarFrotaNuvem = async (al, dadosVeiculo, unidade) => {
+            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
+            const id = (u + '_' + al).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/frota`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'resolution=merge-duplicates'
+                    },
+                    body: JSON.stringify({ id, unidade: u, al, dados: dadosVeiculo, ativo: dadosVeiculo.ativo !== false, atualizado_em: new Date().toISOString() })
+                });
+                return { success: true };
+            } catch (e) { console.error('Erro ao salvar frota na nuvem:', e); return { success: false }; }
+        };
+
+        window.dbBaixarFrotaDaNuvem = async () => {
+            const unidade = localStorage.getItem('usina_unidade') || 'A369';
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/frota?unidade=eq.${unidade}&select=*&order=al.asc`, {
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                });
+                if (response.ok) {
+                    const rows = await response.json();
+                    if (rows && rows.length > 0) {
+                        const frota = {};
+                        rows.forEach(row => { frota[row.al] = { ...row.dados, ativo: row.ativo }; });
+                        localStorage.setItem('usina_frota_' + unidade, JSON.stringify(frota));
+                        window.FROTA_DB = frota;
+                        if (window.popularFrota) window.popularFrota();
+                        return frota;
+                    }
+                }
+            } catch (e) { console.error('Erro ao baixar frota da nuvem:', e); }
+            const local = localStorage.getItem('usina_frota_' + unidade) || localStorage.getItem('usina_frota');
+            if (local) {
+                const parsed = JSON.parse(local);
+                if (Object.keys(parsed).length > 0) {
+                    window.FROTA_DB = parsed;
+                    if (window.popularFrota) window.popularFrota();
+                    return parsed;
+                }
+            }
+            return null;
+        };
+
+        window.dbExcluirFrotaNuvem = async (al, unidade) => {
+            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
+            const id = (u + '_' + al).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/frota?id=eq.${id}`, {
+                    method: 'DELETE',
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                });
+                return { success: true };
+            } catch (e) { console.error('Erro ao excluir frota da nuvem:', e); return { success: false }; }
+        };
+
+        window.dbSalvarRecebimentoCimentoNuvem = async (rec, unidade) => {
+            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
+            const id = (u + '_' + (rec.timestamp || Date.now()) + '_' + (rec.nf || '0')).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 60);
+
+            // 1. Tenta salvar na tabela 'recebimentos_cimento' (se ela existir)
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/recebimentos_cimento`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'resolution=merge-duplicates'
+                    },
+                    body: JSON.stringify({ id, unidade: u, timestamp: rec.timestamp, dados: rec, atualizado_em: new Date().toISOString() })
+                });
+            } catch (e) { console.error('Erro ao salvar na tabela recebimentos_cimento:', e); }
+
+            // 2. SEMPRE salva o array completo na tabela 'configuracoes'
+            try {
+                const local = localStorage.getItem('usina_recebimentos_cimento_' + u);
+                if (local) {
+                    const arrayCompleto = JSON.parse(local);
+
+                    // 2.1 Deleta primeiro para evitar qualquer conflito de chave
+                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.recebimentos_cimento_${u}`, {
+                        method: 'DELETE',
+                        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                    });
+
+                    // 2.2 Insere o array completo atualizado
+                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'resolution=merge-duplicates'
+                        },
+                        body: JSON.stringify({ id: `recebimentos_cimento_${u}`, dados: arrayCompleto, updated_at: new Date().toISOString() })
+                    });
+                }
+            } catch (e) { console.error('Erro ao salvar no configuracoes:', e); }
+
+            return { success: true };
+        };
+
+        window.dbBaixarRecebimentosCimentoDaNuvem = async () => {
+            const unidade = localStorage.getItem('usina_unidade') || 'A369';
+            let historico = [];
+
+            // 1. Tenta baixar da tabela 'recebimentos_cimento'
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/recebimentos_cimento?unidade=eq.${unidade}&select=*&order=timestamp.desc`, {
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                });
+                if (response.ok) {
+                    const rows = await response.json();
+                    if (rows && rows.length > 0) {
+                        historico = rows.map(row => ({ ...row.dados }));
+                    }
+                }
+            } catch (e) { console.error('Erro ao baixar da tabela recebimentos_cimento:', e); }
+
+            // 2. Tenta baixar da tabela 'configuracoes' para garantir retrocompatibilidade completa
+            try {
+                const responseConfigs = await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.recebimentos_cimento_${unidade}&select=*`, {
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                });
+                if (responseConfigs.ok) {
+                    const configs = await responseConfigs.json();
+                    if (configs && configs.length > 0 && configs[0].dados) {
+                        const confHist = Array.isArray(configs[0].dados) ? configs[0].dados : [];
+                        confHist.forEach(item => {
+                            const exists = historico.find(h => h.timestamp === item.timestamp || (h.data === item.data && h.nf === item.nf));
+                            if (!exists) historico.push(item);
+                        });
+                    }
+                }
+            } catch (e) { console.error('Erro ao baixar de configuracoes:', e); }
+
+            // 3. Lê o localStorage local para não perder os dados locais antes de atualizar
+            const local = localStorage.getItem('usina_recebimentos_cimento_' + unidade);
+            if (local) {
+                try {
+                    const localHist = JSON.parse(local);
+                    if (Array.isArray(localHist)) {
+                        localHist.forEach(item => {
+                            const exists = historico.find(h => h.timestamp === item.timestamp || (h.data === item.data && h.nf === item.nf));
+                            if (!exists) historico.push(item);
+                        });
+                    }
+                } catch (e) { }
+            }
+
+            // Ordena por timestamp ou data
+            historico.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            if (historico.length > 0) {
+                localStorage.setItem('usina_recebimentos_cimento_' + unidade, JSON.stringify(historico));
+            }
+
+            if (window.renderizarHistoricoCimento) window.renderizarHistoricoCimento();
+            return historico;
+        };
+
+        window.dbExcluirRecebimentoCimentoNuvem = async (timestamp, unidade) => {
+            const u = unidade || localStorage.getItem('usina_unidade') || 'A369';
+            // 1. Tenta deletar da tabela 'recebimentos_cimento'
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/recebimentos_cimento?unidade=eq.${u}&timestamp=eq.${timestamp}`, {
+                    method: 'DELETE',
+                    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                });
+            } catch (e) { console.error('Erro ao excluir recebimento da nuvem:', e); }
+
+            // 2. Atualiza no 'configuracoes'
+            try {
+                const local = localStorage.getItem('usina_recebimentos_cimento_' + u);
+                if (local) {
+                    const arrayCompleto = JSON.parse(local);
+
+                    // 2.1 Deleta primeiro para evitar qualquer conflito
+                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes?id=eq.recebimentos_cimento_${u}`, {
+                        method: 'DELETE',
+                        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+                    });
+
+                    // 2.2 Insere o array completo atualizado
+                    await fetch(`${SUPABASE_URL}/rest/v1/configuracoes`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'resolution=merge-duplicates'
+                        },
+                        body: JSON.stringify({ id: `recebimentos_cimento_${u}`, dados: arrayCompleto, updated_at: new Date().toISOString() })
+                    });
+                }
+            } catch (e) { console.error('Erro ao atualizar no configuracoes:', e); }
+
+            return { success: true };
         };
 
         window.exportarCSV = async function () {
@@ -3889,8 +4118,6 @@
         }
         window.baixarTracosParaComputador = baixarTracosParaComputador;
 
-
-
         function popularTracos() {
 
             let listaEmissao = document.getElementById('listaTracos');
@@ -3968,6 +4195,17 @@
                     const fmt = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     let tr = document.createElement('tr');
 
+                    let corUsinaBadge = '#64748b';
+                    let labelUsinaBadge = 'N/A';
+
+                    if (nome.toLowerCase().includes('369')) {
+                        corUsinaBadge = '#ef4444';
+                        labelUsinaBadge = 'A369';
+                    } else if (nome.toLowerCase().includes('375')) {
+                        corUsinaBadge = '#3b82f6';
+                        labelUsinaBadge = 'A375';
+                    }
+
                     let htmlMats = '';
                     MAT_DB.forEach(mat => {
                         let valor = trac[mat.id];
@@ -4006,17 +4244,6 @@
                         }
                         htmlMats += `<td>${fmt(valor)}</td>`;
                     });
-
-                    let corUsinaBadge = '#64748b';
-                    let labelUsinaBadge = 'N/A';
-
-                    if (nome.toLowerCase().includes('369')) {
-                        corUsinaBadge = '#ef4444';
-                        labelUsinaBadge = 'A369';
-                    } else if (nome.toLowerCase().includes('375')) {
-                        corUsinaBadge = '#3b82f6';
-                        labelUsinaBadge = 'A375';
-                    }
 
                     tr.innerHTML = `
                         <td style="padding: 10px 5px;"><span style="font-size:10px; font-weight:900; color:${corUsinaBadge}; border: 1px solid ${corUsinaBadge}; border-radius:6px; padding:3px 8px; display: inline-block; min-width: 45px; text-align: center;">${labelUsinaBadge}</span></td>
@@ -4062,7 +4289,6 @@
                 let mot = MOTORISTAS_DB[matricula];
                 // Filtrar por nome/unidade se necessário
                 if (mot.nome.includes(uOposta)) return;
-
                 let ativo = mot.hasOwnProperty('ativo') ? mot.ativo : true;
 
                 // Pra emissao:
@@ -4227,6 +4453,7 @@
             }
         };
 
+
         window.editarTraco = async function (nome) {
             let senha = await pedirSenha("⚠️ Digite a Senha de ADM para editar o traço:");
             let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
@@ -4238,7 +4465,7 @@
             let trac = TRACOS_DB[nome];
             if (!trac) return;
 
-            window.estaEditandoTraco = nome; // Memoriza o nome original
+            window.estaEditandoTraco = nome;
             document.getElementById('nvNome').value = nome;
             document.getElementById('nvAtivo').value = trac.hasOwnProperty('ativo') ? trac.ativo + "" : "true";
             document.getElementById('nvAtivo').dispatchEvent(new Event('change'));
@@ -4287,6 +4514,11 @@
                 return;
             }
             let nova = await pedirSenha("Qual será a sua NOVA senha oculta?");
+
+            if (estaEditandoTraco) {
+                // Salvar edição sem senha solicitado pelo usuário
+            }
+
             if (!nova || nova.trim() === "") {
                 if (nova !== null) alert("Senha não pode ser vazia.");
                 return;
@@ -4310,7 +4542,6 @@
             if (window.estaEditandoTraco && window.estaEditandoTraco !== nome) {
                 delete window.TRACOS_DB[window.estaEditandoTraco];
                 localStorage.setItem('usina_tracos_' + unidadeAtual, JSON.stringify(window.TRACOS_DB));
-                // Remove o antigo da nuvem também
                 if (window.dbExcluirTracoNuvem) await window.dbExcluirTracoNuvem(window.estaEditandoTraco);
             }
             window.estaEditandoTraco = null;
@@ -4333,9 +4564,7 @@
             TRACOS_DB = window.TRACOS_DB;
             localStorage.setItem('usina_tracos_' + unidadeAtual, JSON.stringify(window.TRACOS_DB));
 
-            // 2. Salva na nuvem (como linha individual igual às notas)
-            let btnTxt = "Cadastrar no Sistema";
-            let btnColor = "linear-gradient(135deg, #3b82f6, #2563eb)";
+            // 2. Salva na nuvem como linha individual (igual às notas)
             if (window.dbSalvarTracoNuvem) {
                 const r = await window.dbSalvarTracoNuvem(nome, novoTraco);
                 if (r.success) {
@@ -4348,7 +4577,7 @@
             }
 
             let btn = document.getElementById('btnSalvarTraco');
-            if (btn) { btn.innerText = btnTxt; btn.style.background = btnColor; }
+            if (btn) { btn.innerText = "Cadastrar no Sistema"; btn.style.background = "linear-gradient(135deg, #3b82f6, #2563eb)"; }
 
             // Limpar campos
             document.getElementById('nvNome').value = "";
@@ -4368,17 +4597,14 @@
             let senha = await pedirSenha("⚠️ EXCLUSÃO DE TRAÇO: Digite a Senha de ADM:");
             let senhaOficial = localStorage.getItem('usina_senha_tracos') || "ATERPA369";
             if (senha !== senhaOficial && senha !== "ATERPA369") {
-                if (senha !== null) alert("Senha Incorreta! Operação cancelada.");
+                if (senha !== null) alert("Senha Incorreta! Ação cancelada.");
                 return;
             }
             if (!confirm(`Deseja realmente EXCLUIR o traço "${nome}"?\nEsta ação não pode ser desfeita.`)) return;
 
-            // Remove localmente
             delete window.TRACOS_DB[nome];
             TRACOS_DB = window.TRACOS_DB;
             localStorage.setItem('usina_tracos_' + unidadeAtual, JSON.stringify(window.TRACOS_DB));
-
-            // Remove da nuvem
             if (window.dbExcluirTracoNuvem) await window.dbExcluirTracoNuvem(nome);
 
             alert(`Traço "${nome}" removido com sucesso!`);
@@ -4835,7 +5061,7 @@
                 }
             });
 
-            // 2. Gerar Campos Dinâmicos
+            // 2. Gerar Campos Dinâmicos (para outros materiais se necessário)
             MAT_DB.forEach(mat => {
                 if (mat.type === 'aggregate') {
                     // Se já existe um campo fixo para este agregado, não cria um novo no container manual
@@ -5721,7 +5947,7 @@
     <script>
         window.usina_silos_db = JSON.parse(localStorage.getItem('usina_silos_db') || '{"Silo 1": 0, "Silo 2": 0}');
 
-        // trocarUnidadeRapido é gerenciado globalmente na inicialização com reload de estado limpo
+
 
         window.atualizarSilosUI = function () {
             let fmt = (val) => val.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -6046,6 +6272,7 @@
                 await window.dbBaixarHistoricoDaNuvem();
             }
 
+
             atualizarSilosUI();
 
             // Auto-sugestão da próxima NF baseada no histórico
@@ -6070,92 +6297,217 @@
                 console.error("Erro ao puxar NF do histórico", e);
             }
 
-            // Puxar dados de nota existente ao digitar NF que já está no histórico
-            window.preencherFormularioComNota = function (n) {
-                if (!n) return;
-                
-                // 1. Campos de texto simples
-                if (document.getElementById('inputDate')) document.getElementById('inputDate').value = n.data || "";
-                if (document.getElementById('inputHoraMistura')) document.getElementById('inputHoraMistura').value = n.hora_mistura || "";
-                if (document.getElementById('inputHoraSaida')) document.getElementById('inputHoraSaida').value = n.hora_saida || "";
-                if (document.getElementById('inputLocal')) document.getElementById('inputLocal').value = n.frente || "";
-                if (document.getElementById('inputVolume')) document.getElementById('inputVolume').value = n.volume || "";
-                if (document.getElementById('inputAguaObra')) document.getElementById('inputAguaObra').value = n.agua_obra !== undefined ? n.agua_obra : 0;
-                if (document.getElementById('inputAguaUsina')) document.getElementById('inputAguaUsina').value = n.agua_usina !== undefined ? n.agua_usina : 0;
-                if (document.getElementById('inputGelo')) document.getElementById('inputGelo').value = n.gelo !== undefined ? n.gelo : 0;
-                if (document.getElementById('inputSilo')) document.getElementById('inputSilo').value = n.silo || "Silo 1";
-
-                // 2. Veículo (Betoneira)
-                if (n.al) {
-                    const vec = (typeof FROTA_DB !== 'undefined' ? FROTA_DB[n.al] : null) || { placa: n.placa || "" };
-                    estado.placaSelecionadaObj = { al: n.al, placa: vec.plaka || vec.placa || "" };
-                    if (document.getElementById('inputPlacaDisplay')) document.getElementById('inputPlacaDisplay').value = n.al;
-                    if (document.getElementById('inputFrota')) document.getElementById('inputFrota').value = vec.placa || "";
-                    
-                    // Atualiza seleção na lista
-                    document.querySelectorAll('#listaPlacas li').forEach(li => {
-                        if (li.innerText.trim().toUpperCase() === n.al.trim().toUpperCase()) {
-                            li.classList.add('selected');
-                        } else {
-                            li.classList.remove('selected');
-                        }
-                    });
-                }
-
-                // 3. Motorista
-                if (n.motorista) {
-                    estado.motoristaSelecionadoObj = { matricula: n.matricula || "", nome: n.motorista };
-                    if (document.getElementById('inputMotMatriculaDisplay')) document.getElementById('inputMotMatriculaDisplay').value = n.matricula || "";
-                    if (document.getElementById('inputMotoristaDisplay')) document.getElementById('inputMotoristaDisplay').value = n.motorista;
-                    
-                    // Atualiza seleção na lista
-                    document.querySelectorAll('#listaMotoristas li').forEach(li => {
-                        if (li.innerText.trim().toUpperCase() === n.motorista.trim().toUpperCase()) {
-                            li.classList.add('selected');
-                        } else {
-                            li.classList.remove('selected');
-                        }
-                    });
-                }
-
-                // 4. Traço
-                if (n.traco && window.selecionarTracoGeral) {
-                    window.selecionarTracoGeral(n.traco);
-                }
-
-                // 5. Vias (Cópias)
-                const viasInput = document.getElementById('inputVias') || document.getElementById('inputCopias') || document.getElementById('vias');
-                if (viasInput && n.vias) {
-                    viasInput.value = n.vias;
-                }
-
-                // Dispara recalcular para atualizar a barra de materiais
-                if (typeof recalcular === 'function') recalcular();
-            };
-
+            // Sugestões de locais personalizadas de alta fidelidade (idêntica à caixa preta do Chrome)
             try {
-                const inputNF = document.getElementById('inputNF');
-                if (inputNF) {
-                    inputNF.addEventListener('change', function () {
-                        const nfDigitada = this.value.trim();
-                        if (!nfDigitada) return;
+                const locaisAplicacao = ["Fabricação das lajes pré-moldadas - Vão 01", "Fabricação das canaletas pré-moldadas - Vão 01", "Fabricação das tampas das canaletas - Vão 01", "Fabricação das lajes pré-moldadas - Vão 02", "Fabricação das canaletas pré-moldadas - Vão 02", "Fabricação das tampas das canaletas - Vão 02", "Fabricação das canaletas pré-moldadas - Vão 03", "Fabricação das tampas das canaletas - Vão 03", "Fabricação das canaletas pré-moldadas - Vão 04", "Fabricação das tampas das canaletas - Vão 04", "Fabricação das canaletas pré-moldadas - Vão 05", "Fabricação das tampas das canaletas - Vão 05", "Fabricação das vigas longarinas pré-moldadas - Vão 06", "Fabricação das lajes pré-moldadas - Vão 06", "Fabricação das canaletas pré-moldadas - Vão 06", "Fabricação das tampas das canaletas - Vão 06", "Fabricação das vigas longarinas pré-moldadas - Vão 07", "Fabricação das lajes pré-moldadas - Vão 07", "Fabricação das canaletas pré-moldadas - Vão 07", "Fabricação das tampas das canaletas - Vão 07", "Fabricação das vigas longarinas pré-moldadas - Vão 08", "Fabricação das lajes pré-moldadas - Vão 08", "Fabricação das canaletas pré-moldadas - Vão 08", "Fabricação das tampas das canaletas - Vão 08", "Fabricação das vigas longarinas pré-moldadas - Vão 09", "Fabricação das lajes pré-moldadas - Vão 09", "Fabricação das canaletas pré-moldadas - Vão 09", "Fabricação das tampas das canaletas - Vão 09", "Fabricação das vigas longarinas pré-moldadas - Vão 10", "Fabricação das lajes pré-moldadas - Vão 10", "Fabricação das canaletas pré-moldadas - Vão 10", "Fabricação das tampas das canaletas - Vão 10", "Fabricação das vigas longarinas pré-moldadas - Vão 11", "Fabricação das lajes pré-moldadas - Vão 11", "Fabricação das canaletas pré-moldadas - Vão 11", "Fabricação das tampas das canaletas - Vão 11", "Fabricação das vigas longarinas pré-moldadas - Vão 12", "Fabricação das lajes pré-moldadas - Vão 12", "Fabricação das canaletas pré-moldadas - Vão 12", "Fabricação das tampas das canaletas - Vão 12", "Fabricação das vigas longarinas pré-moldadas - Vão 13", "Fabricação das lajes pré-moldadas - Vão 13", "Fabricação das canaletas pré-moldadas - Vão 13", "Fabricação das tampas das canaletas - Vão 13", "Fabricação das vigas longarinas pré-moldadas - Vão 14", "Fabricação das lajes pré-moldadas - Vão 14", "Fabricação das canaletas pré-moldadas - Vão 14", "Fabricação das tampas das canaletas - Vão 14", "Fabricação das vigas longarinas pré-moldadas - Vão 15", "Fabricação das lajes pré-moldadas - Vão 15", "Fabricação das canaletas pré-moldadas - Vão 15", "Fabricação das tampas das canaletas - Vão 15", "Fabricação das vigas longarinas pré-moldadas - Vão 16", "Fabricação das lajes pré-moldadas - Vão 16", "Fabricação das canaletas pré-moldadas - Vão 16", "Fabricação das tampas das canaletas - Vão 16", "Fabricação das vigas longarinas pré-moldadas - Vão 17", "Fabricação das lajes pré-moldadas - Vão 17", "Fabricação das canaletas pré-moldadas - Vão 17", "Fabricação das tampas das canaletas - Vão 17", "Fabricação das vigas longarinas pré-moldadas - Vão 18", "Fabricação das lajes pré-moldadas - Vão 18", "Fabricação das canaletas pré-moldadas - Vão 18", "Fabricação das tampas das canaletas - Vão 18", "Fabricação das vigas longarinas pré-moldadas - Vão 19", "Fabricação das lajes pré-moldadas - Vão 19", "Fabricação das canaletas pré-moldadas - Vão 19", "Fabricação das tampas das canaletas - Vão 19", "Fabricação das vigas longarinas pré-moldadas - Vão 20", "Fabricação das lajes pré-moldadas - Vão 20", "Fabricação das canaletas pré-moldadas - Vão 20", "Fabricação das tampas das canaletas - Vão 20", "Fabricação das vigas longarinas pré-moldadas - Vão 21", "Fabricação das lajes pré-moldadas - Vão 21", "Fabricação das canaletas pré-moldadas - Vão 21", "Fabricação das tampas das canaletas - Vão 21", "Fabricação das vigas longarinas pré-moldadas - Vão 22", "Fabricação das lajes pré-moldadas - Vão 22", "Fabricação das canaletas pré-moldadas - Vão 22", "Fabricação das tampas das canaletas - Vão 22", "Fabricação das vigas longarinas pré-moldadas - Vão 23", "Fabricação das lajes pré-moldadas - Vão 23", "Fabricação das canaletas pré-moldadas - Vão 23", "Fabricação das tampas das canaletas - Vão 23", "Fabricação das vigas longarinas pré-moldadas - Vão 24", "Fabricação das lajes pré-moldadas - Vão 24", "Fabricação das canaletas pré-moldadas - Vão 24", "Fabricação das tampas das canaletas - Vão 24", "Fabricação das vigas longarinas pré-moldadas - Vão 25", "Fabricação das lajes pré-moldadas - Vão 25", "Fabricação das canaletas pré-moldadas - Vão 25", "Fabricação das tampas das canaletas - Vão 25", "Fabricação das vigas longarinas pré-moldadas - Vão 26", "Fabricação das lajes pré-moldadas - Vão 26", "Fabricação das canaletas pré-moldadas - Vão 26", "Fabricação das tampas das canaletas - Vão 26", "Fabricação das vigas longarinas pré-moldadas - Vão 27", "Fabricação das lajes pré-moldadas - Vão 27", "Fabricação das canaletas pré-moldadas - Vão 27", "Fabricação das tampas das canaletas - Vão 27", "Fabricação das vigas longarinas pré-moldadas - Vão 28", "Fabricação das lajes pré-moldadas - Vão 28", "Fabricação das canaletas pré-moldadas - Vão 28", "Fabricação das tampas das canaletas - Vão 28", "Fabricação das vigas longarinas pré-moldadas - Vão 29", "Fabricação das lajes pré-moldadas - Vão 29", "Fabricação das canaletas pré-moldadas - Vão 29", "Fabricação das tampas das canaletas - Vão 29", "Fabricação das vigas longarinas pré-moldadas - Vão 30", "Fabricação das lajes pré-moldadas - Vão 30", "Fabricação das canaletas pré-moldadas - Vão 30", "Fabricação das tampas das canaletas - Vão 30", "Fabricação das vigas longarinas pré-moldadas - Vão 31", "Fabricação das lajes pré-moldadas - Vão 31", "Fabricação das canaletas pré-moldadas - Vão 31", "Fabricação das tampas das canaletas - Vão 31", "Fabricação das vigas longarinas pré-moldadas - Vão 32", "Fabricação das lajes pré-moldadas - Vão 32", "Fabricação das canaletas pré-moldadas - Vão 32", "Fabricação das tampas das canaletas - Vão 32", "Fabricação das vigas longarinas pré-moldadas - Vão 33", "Fabricação das lajes pré-moldadas - Vão 33", "Fabricação das canaletas pré-moldadas - Vão 33", "Fabricação das tampas das canaletas - Vão 33", "Fabricação das vigas longarinas pré-moldadas - Vão 34", "Fabricação das lajes pré-moldadas - Vão 34", "Fabricação das canaletas pré-moldadas - Vão 34", "Fabricação das tampas das canaletas - Vão 34", "Fabricação das vigas longarinas pré-moldadas - Vão 35", "Fabricação das lajes pré-moldadas - Vão 35", "Fabricação das canaletas pré-moldadas - Vão 35", "Fabricação das tampas das canaletas - Vão 35", "Fabricação das vigas longarinas pré-moldadas - Vão 36", "Fabricação das lajes pré-moldadas - Vão 36", "Fabricação das canaletas pré-moldadas - Vão 36", "Fabricação das tampas das canaletas - Vão 36", "Bloco do Encontro - E01", "Bloco do Apoio - A01 1ª Etapa", "Bloco do Apoio - A01 2ª Etapa", "Bloco do Apoio - A02 1ª Etapa", "Bloco do Apoio - A02 2ª Etapa", "Bloco do Apoio - A03 1ª Etapa", "Bloco do Apoio - A03 2ª Etapa", "Bloco do Apoio - A03 3ª Etapa", "Bloco do Apoio - A04 1ª Etapa", "Bloco do Apoio - A04 2ª Etapa", "Bloco do Apoio - A04 3ª Etapa", "Bloco do Apoio - A05 1ª Etapa", "Bloco do Apoio - A05 2ª Etapa", "Bloco do Apoio - A06 1ª Etapa", "Bloco do Apoio - A06 2ª Etapa", "Bloco do Apoio - A07 1ª Etapa", "Bloco do Apoio - A07 2ª Etapa", "Bloco do Apoio - A08 1ª Etapa", "Bloco do Apoio - A08 2ª Etapa", "Bloco do Apoio - A09 1ª Etapa", "Bloco do Apoio - A09 2ª Etapa", "Bloco do Apoio - A10 1ª Etapa", "Bloco do Apoio - A10 2ª Etapa", "Bloco do Apoio - A11 1ª Etapa", "Bloco do Apoio - A11 2ª Etapa", "Bloco do Apoio - A12 1ª Etapa", "Bloco do Apoio - A12 2ª Etapa", "Bloco do Apoio - A13 1ª Etapa", "Bloco do Apoio - A13 2ª Etapa", "Bloco do Apoio - A14 1ª Etapa", "Bloco do Apoio - A14 2ª Etapa", "Bloco do Apoio - A15 1ª Etapa", "Bloco do Apoio - A15 2ª Etapa", "Bloco do Apoio - A16 1ª Etapa", "Bloco do Apoio - A16 2ª Etapa", "Bloco do Apoio - A17 1ª Etapa", "Bloco do Apoio - A17 2ª Etapa", "Bloco do Apoio - A18 1ª Etapa", "Bloco do Apoio - A18 2ª Etapa", "Bloco do Apoio - A19 1ª Etapa", "Bloco do Apoio - A19 2ª Etapa", "Bloco do Apoio - A20 1ª Etapa", "Bloco do Apoio - A20 2ª Etapa", "Bloco do Apoio - A28 1ª Etapa", "Bloco do Apoio - A28 2ª Etapa", "Bloco do Apoio - A29 1ª Etapa", "Bloco do Apoio - A29 2ª Etapa", "Bloco do Apoio - A30 1ª Etapa", "Bloco do Apoio - A30 2ª Etapa", "Bloco do Apoio - A31 1ª Etapa", "Bloco do Apoio - A31 2ª Etapa", "Bloco do Apoio - A32 1ª Etapa", "Bloco do Apoio - A32 2ª Etapa", "Bloco do Apoio - A33 1ª Etapa", "Bloco do Apoio - A33 2ª Etapa", "Bloco do Apoio - A34 1ª Etapa", "Bloco do Apoio - A34 2ª Etapa", "Bloco do Apoio - A35 1ª Etapa", "Bloco do Apoio - A35 2ª Etapa", "Bloco do Encontro - E02 1ª Etapa", "Bloco do Encontro - E02 2ª Etapa", "Execução de Parede", "Execução de Ala", "1ª Etapa - Pilar do Apoio 01", "2ª Etapa - Pilar do Apoio 01", "3ª Etapa - Pilar do Apoio 01", "4ª Etapa - Pilar do Apoio 01", "5ª Etapa - Pilar do Apoio 01", "1ª Etapa - Pilar do Apoio 02", "2ª Etapa - Pilar do Apoio 02", "3ª Etapa - Pilar do Apoio 02", "4ª Etapa - Pilar do Apoio 02", "5ª Etapa - Pilar do Apoio 02", "6ª Etapa - Pilar do Apoio 02", "7ª Etapa - Pilar do Apoio 02", "8ª Etapa - Pilar do Apoio 02", "1ª Etapa - Pilar do Apoio 03", "2ª Etapa - Pilar do Apoio 03", "3ª Etapa - Pilar do Apoio 03", "4ª Etapa - Pilar do Apoio 03", "5ª Etapa - Pilar do Apoio 03", "6ª Etapa - Pilar do Apoio 03", "7ª Etapa - Pilar do Apoio 03", "1ª Etapa - Pilar do Apoio 04", "2ª Etapa - Pilar do Apoio 04", "3ª Etapa - Pilar do Apoio 04", "4ª Etapa - Pilar do Apoio 04", "5ª Etapa - Pilar do Apoio 04", "6ª Etapa - Pilar do Apoio 04", "7ª Etapa - Pilar do Apoio 04", "1ª Etapa - Pilar do Apoio 05", "2ª Etapa - Pilar do Apoio 05", "3ª Etapa - Pilar do Apoio 05", "4ª Etapa - Pilar do Apoio 05", "5ª Etapa - Pilar do Apoio 05", "6ª Etapa - Pilar do Apoio 05", "7ª Etapa - Pilar do Apoio 05", "8ª Etapa - Pilar do Apoio 05", "1ª Etapa - Pilar do Apoio 06", "2ª Etapa - Pilar do Apoio 06", "3ª Etapa - Pilar do Apoio 06", "4ª Etapa - Pilar do Apoio 06", "5ª Etapa - Pilar do Apoio 06", "6ª Etapa - Pilar do Apoio 06", "7ª Etapa - Pilar do Apoio 06", "8ª Etapa - Pilar do Apoio 06", "9ª Etapa - Pilar do Apoio 06", "1ª Etapa - Pilar do Apoio 07", "2ª Etapa - Pilar do Apoio 07", "3ª Etapa - Pilar do Apoio 07", "4ª Etapa - Pilar do Apoio 07", "5ª Etapa - Pilar do Apoio 07", "6ª Etapa - Pilar do Apoio 07", "7ª Etapa - Pilar do Apoio 07", "8ª Etapa - Pilar do Apoio 07", "9ª Etapa - Pilar do Apoio 07", "1ª Etapa - Pilar do Apoio 08", "2ª Etapa - Pilar do Apoio 08", "3ª Etapa - Pilar do Apoio 08", "4ª Etapa - Pilar do Apoio 08", "5ª Etapa - Pilar do Apoio 08", "6ª Etapa - Pilar do Apoio 08", "7ª Etapa - Pilar do Apoio 08", "8ª Etapa - Pilar do Apoio 08", "9ª Etapa - Pilar do Apoio 08", "1ª Etapa - Pilar do Apoio 09", "2ª Etapa - Pilar do Apoio 09", "3ª Etapa - Pilar do Apoio 09", "4ª Etapa - Pilar do Apoio 09", "5ª Etapa - Pilar do Apoio 09", "6ª Etapa - Pilar do Apoio 09", "7ª Etapa - Pilar do Apoio 09", "8ª Etapa - Pilar do Apoio 09", "9ª Etapa - Pilar do Apoio 09", "1ª Etapa - Pilar do Apoio 10", "2ª Etapa - Pilar do Apoio 10", "3ª Etapa - Pilar do Apoio 10", "4ª Etapa - Pilar do Apoio 10", "5ª Etapa - Pilar do Apoio 10", "6ª Etapa - Pilar do Apoio 10", "7ª Etapa - Pilar do Apoio 10", "8ª Etapa - Pilar do Apoio 10", "9ª Etapa - Pilar do Apoio 10", "1ª Etapa - Pilar do Apoio 11", "2ª Etapa - Pilar do Apoio 11", "3ª Etapa - Pilar do Apoio 11", "4ª Etapa - Pilar do Apoio 11", "5ª Etapa - Pilar do Apoio 11", "6ª Etapa - Pilar do Apoio 11", "7ª Etapa - Pilar do Apoio 11", "8ª Etapa - Pilar do Apoio 11", "9ª Etapa - Pilar do Apoio 11", "1ª Etapa - Pilar do Apoio 12", "2ª Etapa - Pilar do Apoio 12", "3ª Etapa - Pilar do Apoio 12", "4ª Etapa - Pilar do Apoio 12", "5ª Etapa - Pilar do Apoio 12", "6ª Etapa - Pilar do Apoio 12", "7ª Etapa - Pilar do Apoio 12", "8ª Etapa - Pilar do Apoio 12", "9ª Etapa - Pilar do Apoio 12", "1ª Etapa - Pilar do Apoio 13", "2ª Etapa - Pilar do Apoio 13", "3ª Etapa - Pilar do Apoio 13", "4ª Etapa - Pilar do Apoio 13", "5ª Etapa - Pilar do Apoio 13", "6ª Etapa - Pilar do Apoio 13", "7ª Etapa - Pilar do Apoio 13", "8ª Etapa - Pilar do Apoio 13", "9ª Etapa - Pilar do Apoio 13", "1ª Etapa - Pilar do Apoio 14", "2ª Etapa - Pilar do Apoio 14", "3ª Etapa - Pilar do Apoio 14", "4ª Etapa - Pilar do Apoio 14", "5ª Etapa - Pilar do Apoio 14", "6ª Etapa - Pilar do Apoio 14", "7ª Etapa - Pilar do Apoio 14", "8ª Etapa - Pilar do Apoio 14", "1ª Etapa - Pilar do Apoio 15", "2ª Etapa - Pilar do Apoio 15", "3ª Etapa - Pilar do Apoio 15", "4ª Etapa - Pilar do Apoio 15", "5ª Etapa - Pilar do Apoio 15", "6ª Etapa - Pilar do Apoio 15", "7ª Etapa - Pilar do Apoio 15", "8ª Etapa - Pilar do Apoio 15", "1ª Etapa - Pilar do Apoio 16", "2ª Etapa - Pilar do Apoio 16", "3ª Etapa - Pilar do Apoio 16", "4ª Etapa - Pilar do Apoio 16", "5ª Etapa - Pilar do Apoio 16", "6ª Etapa - Pilar do Apoio 16", "7ª Etapa - Pilar do Apoio 16", "8ª Etapa - Pilar do Apoio 16", "1ª Etapa - Pilar do Apoio 17", "2ª Etapa - Pilar do Apoio 17", "3ª Etapa - Pilar do Apoio 17", "4ª Etapa - Pilar do Apoio 17", "5ª Etapa - Pilar do Apoio 17", "6ª Etapa - Pilar do Apoio 17", "7ª Etapa - Pilar do Apoio 17", "8ª Etapa - Pilar do Apoio 17", "1ª Etapa - Pilar do Apoio 18", "2ª Etapa - Pilar do Apoio 18", "3ª Etapa - Pilar do Apoio 18", "4ª Etapa - Pilar do Apoio 18", "5ª Etapa - Pilar do Apoio 18", "6ª Etapa - Pilar do Apoio 18", "7ª Etapa - Pilar do Apoio 18", "8ª Etapa - Pilar do Apoio 18", "9ª Etapa - Pilar do Apoio 18", "1ª Etapa - Pilar do Apoio 19", "2ª Etapa - Pilar do Apoio 19", "3ª Etapa - Pilar do Apoio 19", "4ª Etapa - Pilar do Apoio 19", "5ª Etapa - Pilar do Apoio 19", "6ª Etapa - Pilar do Apoio 19", "7ª Etapa - Pilar do Apoio 19", "8ª Etapa - Pilar do Apoio 19", "1ª Etapa - Pilar do Apoio 20", "2ª Etapa - Pilar do Apoio 20", "3ª Etapa - Pilar do Apoio 20", "4ª Etapa - Pilar do Apoio 20", "5ª Etapa - Pilar do Apoio 20", "6ª Etapa - Pilar do Apoio 20", "7ª Etapa - Pilar do Apoio 20", "8ª Etapa - Pilar do Apoio 20", "1ª Etapa - Pilar do Apoio 21", "2ª Etapa - Pilar do Apoio 21", "3ª Etapa - Pilar do Apoio 21", "4ª Etapa - Pilar do Apoio 21", "5ª Etapa - Pilar do Apoio 21", "6ª Etapa - Pilar do Apoio 21", "7ª Etapa - Pilar do Apoio 21", "8ª Etapa - Pilar do Apoio 21", "1ª Etapa - Pilar do Apoio 22", "2ª Etapa - Pilar do Apoio 22", "3ª Etapa - Pilar do Apoio 22", "4ª Etapa - Pilar do Apoio 22", "5ª Etapa - Pilar do Apoio 22", "6ª Etapa - Pilar do Apoio 22", "7ª Etapa - Pilar do Apoio 22", "8ª Etapa - Pilar do Apoio 22", "1ª Etapa - Pilar do Apoio 23", "2ª Etapa - Pilar do Apoio 23", "3ª Etapa - Pilar do Apoio 23", "4ª Etapa - Pilar do Apoio 23", "5ª Etapa - Pilar do Apoio 23", "6ª Etapa - Pilar do Apoio 23", "7ª Etapa - Pilar do Apoio 23", "8ª Etapa - Pilar do Apoio 23", "9ª Etapa - Pilar do Apoio 23", "1ª Etapa - Pilar do Apoio 24", "2ª Etapa - Pilar do Apoio 24", "3ª Etapa - Pilar do Apoio 24", "4ª Etapa - Pilar do Apoio 24", "5ª Etapa - Pilar do Apoio 24", "6ª Etapa - Pilar do Apoio 24", "7ª Etapa - Pilar do Apoio 24", "8ª Etapa - Pilar do Apoio 24", "1ª Etapa - Pilar do Apoio 25", "2ª Etapa - Pilar do Apoio 25", "3ª Etapa - Pilar do Apoio 25", "4ª Etapa - Pilar do Apoio 25", "5ª Etapa - Pilar do Apoio 25", "6ª Etapa - Pilar do Apoio 25", "7ª Etapa - Pilar do Apoio 25", "8ª Etapa - Pilar do Apoio 25", "1ª Etapa - Pilar do Apoio 26", "2ª Etapa - Pilar do Apoio 26", "3ª Etapa - Pilar do Apoio 26", "4ª Etapa - Pilar do Apoio 26", "5ª Etapa - Pilar do Apoio 26", "6ª Etapa - Pilar do Apoio 26", "7ª Etapa - Pilar do Apoio 26", "1ª Etapa - Pilar do Apoio 27", "2ª Etapa - Pilar do Apoio 27", "3ª Etapa - Pilar do Apoio 27", "4ª Etapa - Pilar do Apoio 27", "5ª Etapa - Pilar do Apoio 27", "6ª Etapa - Pilar do Apoio 27", "7ª Etapa - Pilar do Apoio 27", "1ª Etapa - Pilar do Apoio 28", "2ª Etapa - Pilar do Apoio 28", "3ª Etapa - Pilar do Apoio 28", "4ª Etapa - Pilar do Apoio 28", "5ª Etapa - Pilar do Apoio 28", "6ª Etapa - Pilar do Apoio 28", "7ª Etapa - Pilar do Apoio 28", "1ª Etapa - Pilar do Apoio 29", "2ª Etapa - Pilar do Apoio 29", "3ª Etapa - Pilar do Apoio 29", "4ª Etapa - Pilar do Apoio 29", "5ª Etapa - Pilar do Apoio 29", "6ª Etapa - Pilar do Apoio 29", "7ª Etapa - Pilar do Apoio 29", "1ª Etapa - Pilar do Apoio 30", "2ª Etapa - Pilar do Apoio 30", "3ª Etapa - Pilar do Apoio 30", "4ª Etapa - Pilar do Apoio 30", "5ª Etapa - Pilar do Apoio 30", "6ª Etapa - Pilar do Apoio 30", "7ª Etapa - Pilar do Apoio 30", "8ª Etapa - Pilar do Apoio 30", "1ª Etapa - Pilar do Apoio 31", "2ª Etapa - Pilar do Apoio 31", "3ª Etapa - Pilar do Apoio 31", "4ª Etapa - Pilar do Apoio 31", "5ª Etapa - Pilar do Apoio 31", "6ª Etapa - Pilar do Apoio 31", "7ª Etapa - Pilar do Apoio 31", "8ª Etapa - Pilar do Apoio 31", "1ª Etapa - Pilar do Apoio 32", "2ª Etapa - Pilar do Apoio 32", "3ª Etapa - Pilar do Apoio 32", "4ª Etapa - Pilar do Apoio 32", "5ª Etapa - Pilar do Apoio 32", "6ª Etapa - Pilar do Apoio 32", "7ª Etapa - Pilar do Apoio 32", "8ª Etapa - Pilar do Apoio 32", "1ª Etapa - Pilar do Apoio 33", "2ª Etapa - Pilar do Apoio 33", "3ª Etapa - Pilar do Apoio 33", "4ª Etapa - Pilar do Apoio 33", "5ª Etapa - Pilar do Apoio 33", "6ª Etapa - Pilar do Apoio 33", "7ª Etapa - Pilar do Apoio 33", "1ª Etapa - Pilar do Apoio 34", "2ª Etapa - Pilar do Apoio 34", "3ª Etapa - Pilar do Apoio 34", "4ª Etapa - Pilar do Apoio 34", "5ª Etapa - Pilar do Apoio 34", "6ª Etapa - Pilar do Apoio 34", "1ª Etapa - Pilar do Apoio 35", "2ª Etapa - Pilar do Apoio 35", "3ª Etapa - Pilar do Apoio 35", "4ª Etapa - Pilar do Apoio 35", "5ª Etapa - Pilar do Apoio 35", "6ª Etapa - Pilar do Apoio 35", "Travessa do Apoio - A01 1° Etapa", "Travessa do Apoio - A02 1° Etapa", "Travessa do Apoio - A05 1° Etapa", "Travessa do Apoio - A06 1° Etapa", "Travessa do Apoio - A06 2° Etapa", "Travessa do Apoio - A07 1° Etapa", "Travessa do Apoio - A07 2° Etapa", "Travessa do Apoio - A08 1° Etapa", "Travessa do Apoio - A08 2° Etapa", "Travessa do Apoio - A09 1° Etapa", "Travessa do Apoio - A09 2° Etapa", "Travessa do Apoio - A10 1° Etapa", "Travessa do Apoio - A10 2° Etapa", "Travessa do Apoio - A11 1° Etapa", "Travessa do Apoio - A11 2° Etapa", "Travessa do Apoio - A12 1° Etapa", "Travessa do Apoio - A12 2° Etapa", "Travessa do Apoio - A13 1° Etapa", "Travessa do Apoio - A13 2° Etapa", "Travessa do Apoio - A14 1° Etapa", "Travessa do Apoio - A14 2° Etapa", "Travessa do Apoio - A15 1° Etapa", "Travessa do Apoio - A15 2° Etapa", "Travessa do Apoio - A16 1° Etapa", "Travessa do Apoio - A16 2° Etapa", "Travessa do Apoio - A17 1° Etapa", "Travessa do Apoio - A17 2° Etapa", "Travessa do Apoio - A18 1° Etapa", "Travessa do Apoio - A18 2° Etapa", "Travessa do Apoio - A19 1° Etapa", "Travessa do Apoio - A19 2° Etapa", "Travessa do Apoio - A20 1° Etapa", "Travessa do Apoio - A20 2° Etapa", "Travessa do Apoio - A21 1° Etapa", "Travessa do Apoio - A21 2° Etapa", "Travessa do Apoio - A22 1° Etapa", "Travessa do Apoio - A22 2° Etapa", "Travessa do Apoio - A23 1° Etapa", "Travessa do Apoio - A23 2° Etapa", "Travessa do Apoio - A24 1° Etapa", "Travessa do Apoio - A24 2° Etapa", "Travessa do Apoio - A25 1° Etapa", "Travessa do Apoio - A25 2° Etapa", "Travessa do Apoio - A26 1° Etapa", "Travessa do Apoio - A26 2° Etapa", "Travessa do Apoio - A27 1° Etapa", "Travessa do Apoio - A27 2° Etapa", "Travessa do Apoio - A28 1° Etapa", "Travessa do Apoio - A28 2° Etapa", "Travessa do Apoio - A29 1° Etapa", "Travessa do Apoio - A29 2° Etapa", "Travessa do Apoio - A30 1° Etapa", "Travessa do Apoio - A30 2° Etapa", "Travessa do Apoio - A31 1° Etapa", "Travessa do Apoio - A31 2° Etapa", "Travessa do Apoio - A32 1° Etapa", "Travessa do Apoio - A32 2° Etapa", "Travessa do Apoio - A33 1° Etapa", "Travessa do Apoio - A33 2° Etapa", "Travessa do Apoio - A34 1° Etapa", "Travessa do Apoio - A34 2° Etapa", "Travessa do Apoio - A35 1° Etapa", "Travessa do Apoio - A35 2° Etapa", "Execução da Transversina 01", "Execução da Transversina 02", "1ª Etapa (Laje de fundo)", "2ª Etapa (Parede)", "3ª Etapa (Laje superior)", "Concreto - Aduela de disparo", "Concreto - 03AD00E", "Concreto - 03AD01E", "Concreto - 03AD02E", "Concreto - 03AD03E", "Concreto - 03AD04E", "Concreto - 03AD05E", "Concreto - 03AD06E", "Concreto - 03AD07E", "Concreto - 03AD08E", "Concreto - 03AD09E", "Concreto - 03AD10E", "Concreto - ADF01", "Concreto - 03AD00D", "Concreto - 03AD01D", "Concreto - 03AD02D", "Concreto - 03AD03D", "Concreto - 03AD04D", "Concreto - 03AD05D", "Concreto - 03AD06D", "Concreto - 03AD07D", "Concreto - 03AD08D", "Concreto - 03AF02", "Concreto - 04AD00E", "Concreto - 04AD01E", "Concreto - 04AD02E", "Concreto - 04AD03E", "Concreto - 04AD04E", "Concreto - 04AD05E", "Concreto - 04AD06E", "Concreto - 04AD07E", "Concreto - 04AD08E", "Concreto - 04AD00D", "Concreto - 04AD01D", "Concreto - 04AD02D", "Concreto - 04AD03D", "Concreto - 04AD04D", "Concreto - 04AD05D", "Concreto - 04AD06D", "Concreto - 04AD07D", "Concreto - 04AD08D", "Concreto - 04AD09D", "Concreto - 04AD10D", "Concreto - ADF03", "Execução de lajes in loco vão 01", "Execução de lajes in loco vão 02", "Execução de lajes in loco vão 06", "Execução de lajes in loco vão 07", "Execução de lajes in loco vão 08", "Execução de lajes in loco vão 09", "Execução de lajes in loco vão 10", "Execução de lajes in loco vão 11", "Execução de lajes in loco vão 12", "Execução de lajes in loco vão 13", "Execução de lajes in loco vão 14", "Execução de lajes in loco vão 15", "Execução de lajes in loco vão 16", "Execução de lajes in loco vão 17", "Execução de lajes in loco vão 18", "Execução de lajes in loco vão 19", "Execução de lajes in loco vão 20", "Execução de lajes in loco vão 21", "Execução de lajes in loco vão 22", "Execução de lajes in loco vão 23", "Execução de lajes in loco vão 24", "Execução de lajes in loco vão 25", "Execução de lajes in loco vão 26", "Execução de lajes in loco vão 27", "Execução de lajes in loco vão 28", "Execução de lajes in loco vão 29", "Execução de lajes in loco vão 30", "Execução de lajes in loco vão 31", "Execução de lajes in loco vão 32", "Execução de lajes in loco vão 33", "Execução de lajes in loco vão 34", "Execução de lajes in loco vão 35", "Execução de lajes in loco vão 36"];
+                const inputLocal = document.getElementById('inputLocal');
+                const dropdown = document.getElementById('dropdownLocais');
 
-                        const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
-                        let hist = JSON.parse(localStorage.getItem('usina_historico_' + unidadeAtual) || localStorage.getItem('usina_historico') || '[]');
-                        const notaExistente = hist.find(x => String(x.nf) === String(nfDigitada) && (x.unidade === unidadeAtual || !x.unidade));
+                if (inputLocal && dropdown) {
+                    let itemAtivoIdx = -1;
 
-                        if (notaExistente) {
-                            const desejaCarregar = confirm(`A Nota Fiscal nº ${nfDigitada} já existe no histórico da Usina ${unidadeAtual}.\n\nDeseja CARREGAR os dados dela para edição?\n(Isso preencherá automaticamente os campos com as informações salvas)`);
-                            if (desejaCarregar) {
-                                window.preencherFormularioComNota(notaExistente);
+                    // Estilo de alta fidelidade idêntico ao autocomplete padrão do Chrome
+                    if (!document.getElementById('estilo-dropdown-local-fidelidade')) {
+                        const style = document.createElement('style');
+                        style.id = 'estilo-dropdown-local-fidelidade';
+                        style.innerHTML = `
+                            .dropdown-item-fidelidade {
+                                padding: 10px 14px;
+                                font-size: 13.5px;
+                                color: #e8eaed;
+                                cursor: pointer;
+                                border-radius: 4px;
+                                transition: background 0.1s;
+                                white-space: nowrap;
+                                text-align: left;
+                                font-family: sans-serif;
+                            }
+                            .dropdown-item-fidelidade:hover, .dropdown-item-fidelidade.active {
+                                background: #3c4043 !important;
+                                color: #ffffff !important;
+                            }
+                        `;
+                        document.head.appendChild(style);
+                    }
+
+                    function mostrarSugestoes(termo) {
+                        // Se o termo for vazio ou o valor padrão, mostra todos os locais!
+                        const mostrarTodos = !termo || termo.trim() === "" || termo === "HELIPONTO";
+                        const termoNormalizado = termo ? termo.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") : "";
+                        
+                        // Filtrar locais
+                        const filtrados = locaisAplicacao.filter(l => {
+                            if (mostrarTodos) return true;
+                            const lNormalizado = l.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+                            return lNormalizado.includes(termoNormalizado);
+                        });
+
+                        dropdown.innerHTML = '';
+                        itemAtivoIdx = -1;
+
+                        if (filtrados.length > 0) {
+                            dropdown.style.display = 'block';
+                            // Exibimos até 150 itens iniciais para rolagem lisa e de alta performance com o mouse
+                            filtrados.slice(0, 150).forEach((l, idx) => {
+                                const div = document.createElement('div');
+                                div.className = 'dropdown-item-fidelidade';
+                                div.innerText = l;
+                                div.dataset.index = idx;
+                                
+                                div.addEventListener('click', () => {
+                                    inputLocal.value = l;
+                                    dropdown.style.display = 'none';
+                                    if (window.atualizarPreviewNota) window.atualizarPreviewNota();
+                                });
+                                dropdown.appendChild(div);
+                            });
+                        } else {
+                            dropdown.style.display = 'none';
+                        }
+                    }
+
+                    // Eventos no inputLocal
+                    inputLocal.addEventListener('focus', () => {
+                        inputLocal.select(); // Seleciona todo o texto para facilitar a digitação direta
+                        mostrarSugestoes(""); // Força exibir a lista inteira ao focar no campo
+                    });
+
+                    inputLocal.addEventListener('click', () => {
+                        mostrarSugestoes(""); // Força exibir a lista inteira ao clicar no campo
+                    });
+
+                    inputLocal.addEventListener('input', () => {
+                        mostrarSugestoes(inputLocal.value);
+                    });
+
+                    // Fecha o dropdown ao clicar fora
+                    document.addEventListener('click', (e) => {
+                        if (e.target !== inputLocal && e.target !== dropdown && !dropdown.contains(e.target)) {
+                            dropdown.style.display = 'none';
+                        }
+                    });
+
+                    // Suporte a teclado (setas e enter)
+                    inputLocal.addEventListener('keydown', (e) => {
+                        const itens = dropdown.getElementsByClassName('dropdown-item-fidelidade');
+                        if (dropdown.style.display === 'block' && itens.length > 0) {
+                            if (e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                if (itemAtivoIdx < itens.length - 1) {
+                                    if (itemAtivoIdx >= 0) itens[itemAtivoIdx].classList.remove('active');
+                                    itemAtivoIdx++;
+                                    itens[itemAtivoIdx].classList.add('active');
+                                    itens[itemAtivoIdx].scrollIntoView({ block: 'nearest' });
+                                }
+                            } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                if (itemAtivoIdx > 0) {
+                                    itens[itemAtivoIdx].classList.remove('active');
+                                    itemAtivoIdx--;
+                                    itens[itemAtivoIdx].classList.add('active');
+                                    itens[itemAtivoIdx].scrollIntoView({ block: 'nearest' });
+                                }
+                            } else if (e.key === 'Enter') {
+                                if (itemAtivoIdx >= 0 && itemAtivoIdx < itens.length) {
+                                    e.preventDefault();
+                                    itens[itemAtivoIdx].click();
+                                }
+                            } else if (e.key === 'Escape') {
+                                dropdown.style.display = 'none';
                             }
                         }
                     });
                 }
             } catch (err) {
-                console.error("Erro ao registrar event listener de NF existente:", err);
+                console.error("Erro no dropdown de locais personalizado:", err);
             }
         });
+
+        // Puxar dados de nota existente ao digitar NF que já está no histórico
+        window.preencherFormularioComNota = function (n) {
+            if (!n) return;
+            
+            // 1. Campos de texto simples
+            if (document.getElementById('inputDate')) document.getElementById('inputDate').value = n.data || "";
+            if (document.getElementById('inputHoraMistura')) document.getElementById('inputHoraMistura').value = n.hora_mistura || "";
+            if (document.getElementById('inputHoraSaida')) document.getElementById('inputHoraSaida').value = n.hora_saida || "";
+            if (document.getElementById('inputLocal')) document.getElementById('inputLocal').value = n.frente || "";
+            if (document.getElementById('inputVolume')) document.getElementById('inputVolume').value = n.volume || "";
+            if (document.getElementById('inputAguaObra')) document.getElementById('inputAguaObra').value = n.agua_obra !== undefined ? n.agua_obra : 0;
+            if (document.getElementById('inputAguaUsina')) document.getElementById('inputAguaUsina').value = n.agua_usina !== undefined ? n.agua_usina : 0;
+            if (document.getElementById('inputGelo')) document.getElementById('inputGelo').value = n.gelo !== undefined ? n.gelo : 0;
+            if (document.getElementById('inputSilo')) document.getElementById('inputSilo').value = n.silo || "Silo 1";
+
+            // 2. Veículo (Betoneira)
+            if (n.al) {
+                const vec = (typeof FROTA_DB !== 'undefined' ? FROTA_DB[n.al] : null) || { placa: n.placa || "" };
+                estado.placaSelecionadaObj = { al: n.al, placa: vec.plaka || vec.placa || "" };
+                if (document.getElementById('inputPlacaDisplay')) document.getElementById('inputPlacaDisplay').value = n.al;
+                if (document.getElementById('inputFrota')) document.getElementById('inputFrota').value = vec.placa || "";
+                
+                // Atualiza seleção na lista
+                document.querySelectorAll('#listaPlacas li').forEach(li => {
+                    if (li.innerText.trim().toUpperCase() === n.al.trim().toUpperCase()) {
+                        li.classList.add('selected');
+                    } else {
+                        li.classList.remove('selected');
+                    }
+                });
+            }
+
+            // 3. Motorista
+            if (n.motorista) {
+                estado.motoristaSelecionadoObj = { matricula: n.matricula || "", nome: n.motorista };
+                if (document.getElementById('inputMotMatriculaDisplay')) document.getElementById('inputMotMatriculaDisplay').value = n.matricula || "";
+                if (document.getElementById('inputMotoristaDisplay')) document.getElementById('inputMotoristaDisplay').value = n.motorista;
+                
+                // Atualiza seleção na lista
+                document.querySelectorAll('#listaMotoristas li').forEach(li => {
+                    if (li.innerText.trim().toUpperCase() === n.motorista.trim().toUpperCase()) {
+                        li.classList.add('selected');
+                    } else {
+                        li.classList.remove('selected');
+                    }
+                });
+            }
+
+            // 4. Traço
+            if (n.traco && window.selecionarTracoGeral) {
+                window.selecionarTracoGeral(n.traco);
+            }
+
+            // 5. Vias (Cópias)
+            const viasInput = document.getElementById('inputVias') || document.getElementById('inputCopias') || document.getElementById('vias');
+            if (viasInput && n.vias) {
+                viasInput.value = n.vias;
+            }
+
+            // Dispara recalcular para atualizar a barra de materiais
+            if (typeof recalcular === 'function') recalcular();
+        };
+
+        try {
+            const inputNF = document.getElementById('inputNF');
+            if (inputNF) {
+                inputNF.addEventListener('change', function () {
+                    const nfDigitada = this.value.trim();
+                    if (!nfDigitada) return;
+
+                    const unidadeAtual = localStorage.getItem('usina_unidade') || 'A369';
+                    let hist = JSON.parse(localStorage.getItem('usina_historico_' + unidadeAtual) || localStorage.getItem('usina_historico') || '[]');
+                    const notaExistente = hist.find(x => String(x.nf) === String(nfDigitada) && (x.unidade === unidadeAtual || !x.unidade));
+
+                    if (notaExistente) {
+                        const desejaCarregar = confirm(`A Nota Fiscal nº ${nfDigitada} já existe no histórico da Usina ${unidadeAtual}.\n\nDeseja CARREGAR os dados dela para edição?\n(Isso preencherá automaticamente os campos com as informações salvas)`);
+                        if (desejaCarregar) {
+                            window.preencherFormularioComNota(notaExistente);
+                        }
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Erro ao registrar event listener de NF existente:", err);
+        }
     </script>
 
 
