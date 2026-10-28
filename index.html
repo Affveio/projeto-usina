@@ -5906,6 +5906,100 @@
         };
 
 
+                window.exportarRecebimentosExcel = async function () {
+            const btn = event && event.target ? event.target.closest('button') : null;
+            let textoOriginal = '';
+            if (btn) {
+                textoOriginal = btn.innerHTML;
+                btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Buscando na Nuvem...`;
+                btn.disabled = true;
+            }
+
+            try {
+                const uAtual = (localStorage.getItem('usina_unidade') || 'A369').toUpperCase();
+
+                if (window.dbBaixarRecebimentosCimentoDaNuvem) {
+                    try { await window.dbBaixarRecebimentosCimentoDaNuvem(); } catch (e) { }
+                }
+
+                let lista = [];
+                if (uAtual === 'GERAL') {
+                    const h369 = JSON.parse(localStorage.getItem('usina_recebimentos_cimento_A369') || '[]').map(r => ({ ...r, unidade: r.unidade || 'A369' }));
+                    const h375 = JSON.parse(localStorage.getItem('usina_recebimentos_cimento_A375') || '[]').map(r => ({ ...r, unidade: r.unidade || 'A375' }));
+                    lista = [...h369, ...h375];
+                } else {
+                    const lLocal = localStorage.getItem('usina_recebimentos_cimento_' + uAtual) || localStorage.getItem('usina_recebimentos_cimento');
+                    lista = JSON.parse(lLocal || '[]').map(r => ({ ...r, unidade: r.unidade || uAtual }));
+                }
+
+                if (!lista || lista.length === 0) {
+                    alert("Nenhum recebimento de cimento encontrado para exportar.");
+                    return;
+                }
+
+                // Ordena do mais recente para o mais antigo
+                lista.sort((a, b) => {
+                    const tA = a.timestamp || (a.data ? new Date(a.data).getTime() : 0);
+                    const tB = b.timestamp || (b.data ? new Date(b.data).getTime() : 0);
+                    return tB - tA;
+                });
+
+                const cabecalhos = ["USINA", "DATA", "NF", "SILO", "BRUTO (KG)", "TARA (KG)", "LÍQUIDO (KG)"];
+                let csvContent = cabecalhos.join(";") + "\r\n";
+
+                const formatarNumero = (val) => {
+                    if (val === null || val === undefined || val === '') return '0';
+                    let n = typeof val === 'number' ? val : parseFloat(String(val).replace(/\./g, '').replace(',', '.')) || 0;
+                    return String(n).replace('.', ',');
+                };
+
+                lista.forEach(rec => {
+                    let dataFmt = '';
+                    if (rec.data) {
+                        dataFmt = rec.data.includes('-') ? rec.data.split('-').reverse().join('/') : rec.data;
+                    }
+
+                    const linha = [
+                        rec.unidade || uAtual,
+                        dataFmt,
+                        rec.nf || '',
+                        rec.silo || '',
+                        formatarNumero(rec.bruto),
+                        formatarNumero(rec.tara),
+                        formatarNumero(rec.liquido)
+                    ];
+
+                    let csvRow = linha.map(campo => {
+                        let s = String(campo === null || campo === undefined ? "" : campo);
+                        return '"' + s.replace(/"/g, '""') + '"';
+                    }).join(";");
+
+                    csvContent += csvRow + "\r\n";
+                });
+
+                const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const dataHora = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+
+                link.setAttribute("href", url);
+                link.setAttribute("download", `Recebimento_Cimento_${uAtual}_${dataHora}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error("Erro ao exportar recebimentos de cimento:", err);
+                alert("Erro ao gerar arquivo Excel: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = textoOriginal;
+                    btn.disabled = false;
+                }
+            }
+        };
+
         // Aba Recebimento de Cimento
         const cementAbaHTML = `
     <main id="aba-recebimento-cimento" class="main-content" style="display: none; padding: 25px; background: #f8fafc; overflow-y: auto;">
@@ -5917,6 +6011,15 @@
                     </h2>
                     <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Controle de entrada de material nos silos e pesagens de balança.</p>
                 </div>
+                <button onclick="window.exportarRecebimentosExcel()"
+                    style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); transition: 0.2s;"
+                    onmouseover="this.style.transform='translateY(-1px)'"
+                    onmouseout="this.style.transform='translateY(0)'">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                    </svg>
+                    Baixar Excel (CSV)
+                </button>
             </div>
 
             <div style="background: white; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.02); overflow: hidden;">
